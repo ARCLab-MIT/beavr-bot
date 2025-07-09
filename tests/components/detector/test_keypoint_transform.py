@@ -1,9 +1,9 @@
 # Test keypoint transform
 
-import pytest
 import numpy as np
 from beavr.components.detector.keypoint_transform import TransformHandPositionCoords
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
+
 
 # Define HAND_COORDS with the known truth values
 HAND_COORDS = np.array([

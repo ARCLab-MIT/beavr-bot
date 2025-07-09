@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
+
 import zmq
 import time
+
 
 class EndEffectorMonitor:
     def __init__(self):

@@ -3,6 +3,7 @@ import pybullet_data
 import numpy as np
 import os
 
+
 current_dir = os.path.dirname(os.path.abspath(__file__))
 
 def test_leap_hand(headless=True):
@@ -82,4 +83,4 @@ def test_leap_hand(headless=True):
 
 if __name__ == "__main__":
     # When run directly, you can choose to show the GUI
-    test_leap_hand(headless=False) 
+    test_leap_hand(headless=False)

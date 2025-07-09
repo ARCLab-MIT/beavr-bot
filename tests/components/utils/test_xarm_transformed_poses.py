@@ -4,8 +4,8 @@ import time
 import numpy as np
 import os
 import json
-from datetime import datetime
 from scipy.spatial.transform import Rotation
+
 
 def load_pose_log(log_file):
     """Load pose log file."""
@@ -74,7 +74,7 @@ def test_xarm_transformed_poses():
     
     # Get initial robot pose from log
     initial_pose = np.array(pose_log[str(0)]['init_robot_pose'])
-    print(f"\nInitial Robot Pose from Log:")
+    print("\nInitial Robot Pose from Log:")
     print(f"Position: {initial_pose[:3, 3]}")
     print(f"Rotation:\n{initial_pose[:3, :3]}")
     
@@ -251,4 +251,4 @@ def test_xarm_transformed_poses():
     p.disconnect()
 
 if __name__ == "__main__":
-    test_xarm_transformed_poses() 
+    test_xarm_transformed_poses()

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
+
 import zmq
 import time
-import numpy as np
-from scipy.spatial.transform import Rotation
+
 
 class CartesianController:
     def __init__(self):

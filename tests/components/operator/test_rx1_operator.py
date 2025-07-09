@@ -1,12 +1,10 @@
 import unittest
-from unittest.mock import patch, MagicMock, call
+from unittest.mock import patch, MagicMock
 import numpy as np
-import zmq
-from scipy.spatial.transform import Rotation
-import time
 
 from beavr.components.operators.rx1_right_operator import RX1RightOperator
-from beavr.constants import ARM_TELEOP_STOP, ARM_TELEOP_CONT
+from beavr.constants import ARM_TELEOP_STOP
+
 
 class TestRX1RightOperator(unittest.TestCase):
     

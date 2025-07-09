@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
+
 import zmq
 import time
 import numpy as np
-from scipy.spatial.transform import Rotation
+
 
 class EndEffectorMonitor:
     def __init__(self):

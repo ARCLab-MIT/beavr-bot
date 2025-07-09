@@ -5,6 +5,7 @@ import numpy as np
 import os
 from scipy.spatial.transform import Rotation
 
+
 def rotate_x_90_degrees(quat_pos_array, sign=1):
     """Rotate a pose array [x,y,z,qx,qy,qz,qw] by 90 degrees around the X-axis."""
     pos = quat_pos_array[:3]

@@ -1,16 +1,26 @@
-import hydra
-from beavr.components import TeleOperator
+from beavr.teleop import TeleopConfig
+from beavr.teleop.main import main
 
-@hydra.main(version_base = '1.2', config_path = 'configs', config_name = 'teleop')
-def main(configs):
-    teleop = TeleOperator(configs)
-    processes = teleop.get_processes()
+__all__ = [
+    "TeleopConfig",
+    "main",
+]
 
-    for process in processes:
-        process.start()
-
-    for process in processes:
-        process.join()
-
-if __name__ == '__main__':
+if __name__ == "__main__":
+    """
+    Convenience wrapper for Beavr Teleop system.
+    
+    Examples:
+        # Single robot
+        python teleop.py --robot_name=leap --laterality=right
+        python teleop.py --robot_name=xarm7 --laterality=left
+        
+        # Multiple robots (composite configuration)
+        python teleop.py --robot_name=leap,xarm7 --laterality=right
+        python teleop.py --robot_name=leap,xarm7 --laterality=bimanual
+        
+        # With environment config
+        python teleop.py --robot_name=leap,xarm7 --config_file=config/prod.yaml
+    """
+    # Delegate CLI execution.
     main()

@@ -3,8 +3,8 @@ import pybullet_data
 import time
 import numpy as np
 import os
-from beavr.src.components.environment.xarm_env import XArmEnv  # We can import our env class if needed
 import argparse
+
 
 def test_xarm():
     """Base test showing link/joint structure and movement."""
@@ -239,7 +239,7 @@ def test_xarm_initial_pose():
     
     print(f"Position: {pos}")
     print(f"Orientation (quaternion): {orn}")
-    print(f"Orientation (euler):", p.getEulerFromQuaternion(orn))
+    print("Orientation (euler):", p.getEulerFromQuaternion(orn))
     
     # Also print joint states
     print("\nJoint States:")
@@ -295,7 +295,7 @@ def test_xarm_links():
         # Verify against expected names
         if i in expected_links:
             if link_name == expected_links[i]:
-                print(f"  ✓ Link name matches URDF")
+                print("  ✓ Link name matches URDF")
             else:
                 print(f"  ✗ Link name mismatch! Expected: {expected_links[i]}, Got: {link_name}")
     
@@ -337,4 +337,4 @@ if __name__ == "__main__":
     elif args.test == 'initial_pose':
         test_xarm_initial_pose()
     elif args.test == 'movement':
-        test_xarm_movement() 
+        test_xarm_movement()

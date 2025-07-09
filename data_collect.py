@@ -1,5 +1,6 @@
 import hydra
-from beavr.components import Collector
+from beavr.teleop.components import Collector
+
 
 @hydra.main(version_base = '1.2', config_path = 'configs', config_name = 'collect_data')
 def main(configs):

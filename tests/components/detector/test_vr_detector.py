@@ -3,6 +3,7 @@ from unittest.mock import patch, MagicMock
 from beavr.components.detector.oculus import OculusVRHandDetector
 from beavr.constants import ARM_LOW_RESOLUTION, ARM_TELEOP_CONT
 
+
 class TestOculusVRHandDetector(unittest.TestCase):
 
     @patch('beavr.components.detector.oculus.create_pull_socket')

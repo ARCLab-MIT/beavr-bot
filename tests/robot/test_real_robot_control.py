@@ -1,13 +1,16 @@
 import tkinter as tk
 from tkinter import ttk
 import numpy as np
-from beavr.src.ros_links.xarm7_right import DexArmControl, Robot
-from copy import copy
+from beavr.src.ros_links.xarm7_right import DexArmControl
 from scipy.spatial.transform import Rotation
 
 import json
 from datetime import datetime
 import time
+
+import traceback
+import traceback
+
 
 class Log2Xarm:
     def __init__(self):
@@ -363,7 +366,6 @@ class RobotControlGUI:
             self.status_text.insert(tk.END, f"{result}\n")
         except Exception as e:
             self.status_text.insert(tk.END, f"Homing failed: {str(e)}\n")
-            import traceback
             self.status_text.insert(tk.END, f"Traceback:\n{traceback.format_exc()}\n")
         self.status_text.see(tk.END)
 
@@ -373,7 +375,6 @@ class RobotControlGUI:
             self.status_text.insert(tk.END, f"Move result: {result}\n")
         except Exception as e:
             self.status_text.insert(tk.END, f"Move forward failed with error: {str(e)}\n")
-            import traceback
             self.status_text.insert(tk.END, f"Traceback:\n{traceback.format_exc()}\n")
         self.status_text.see(tk.END)
 
@@ -446,7 +447,7 @@ class RobotControlGUI:
                 self.status_text.insert(tk.END, f"Quaternion (x,y,z,w): {quaternion}\n")
                 self.status_text.insert(tk.END, f"Move result: {result}\n")
             else:
-                self.status_text.insert(tk.END, f"Failed to execute pose: Invalid index\n")
+                self.status_text.insert(tk.END, "Failed to execute pose: Invalid index\n")
         except Exception as e:
             self.status_text.insert(tk.END, f"Failed to execute pose: {str(e)}\n")
         self.status_text.see(tk.END)

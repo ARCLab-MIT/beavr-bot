@@ -1,13 +1,14 @@
 import pybullet as p
 import pybullet_data
 import time
-import numpy as np
 import os
 import argparse
-from scipy.spatial.transform import Rotation
 import re
+
 import tkinter as tk
 from tkinter import simpledialog
+import traceback
+
 
 def test_leap_hand_joint_limits():
     """
@@ -293,8 +294,6 @@ def test_leap_hand_joint_limits():
             array_button_state = p.readUserDebugParameter(apply_array_button)
             if array_button_state != last_array_button_state:
                 try:
-                    import tkinter as tk
-                    from tkinter import simpledialog
                     
                     # Create a root window but keep it hidden
                     root = tk.Tk()
@@ -357,7 +356,6 @@ def test_leap_hand_joint_limits():
                     
                 except Exception as e:
                     print(f"Error applying array: {e}")
-                    import traceback
                     traceback.print_exc()  # Print the full error traceback
                     print("Please paste any text containing the joint values")
                 
@@ -375,4 +373,4 @@ def test_leap_hand_joint_limits():
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Leap Hand Joint Limits Test')
     args = parser.parse_args()
-    test_leap_hand_joint_limits() 
+    test_leap_hand_joint_limits()

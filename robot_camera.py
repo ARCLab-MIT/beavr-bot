@@ -1,5 +1,6 @@
 import hydra
-from beavr.components import RealsenseCameras
+from beavr.teleop.components import RealsenseCameras
+
 
 @hydra.main(version_base = '1.2', config_path = 'configs', config_name = 'realsense')
 def main(configs):

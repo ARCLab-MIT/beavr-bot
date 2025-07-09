@@ -3,6 +3,7 @@ import base64
 import numpy as np
 import pickle
 
+
 class VideoStreamer(object):
     def __init__(self, host, cam_port):
         self._init_socket(host, cam_port)

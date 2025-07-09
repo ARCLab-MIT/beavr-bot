@@ -4,6 +4,7 @@ import zmq
 import time
 from threading import Thread
 
+
 def setup_dummy_publisher(port):
     """Setup a dummy ZMQ publisher to simulate data"""
     context = zmq.Context()

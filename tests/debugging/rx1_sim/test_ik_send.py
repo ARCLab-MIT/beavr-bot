@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
+
 import time
 import numpy as np
 import zmq
 from beavr.utils.network import ZMQKeypointSubscriber, ZMQKeypointPublisher
 from scipy.spatial.transform import Rotation as R
+
 
 class EndEffectorMonitor:
     def __init__(self, debug=True):

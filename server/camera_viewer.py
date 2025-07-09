@@ -1,4 +1,5 @@
 # simple_viewer.py
+
 from flask import Flask, Response, render_template_string
 import zmq
 import base64
@@ -8,6 +9,9 @@ import time
 import threading
 import queue
 import cv2  # Add for debugging
+
+import traceback
+
 
 app = Flask(__name__)
 
@@ -45,7 +49,6 @@ class VideoStreamer:
             return encoded_data
         except Exception as e:
             print(f"Error getting frame: {e}")
-            import traceback
             traceback.print_exc()
             return None
 
@@ -172,7 +175,7 @@ if __name__ == '__main__':
     camera_thread.start()
     
     # Start the web server
-    print(f"Starting web viewer at http://localhost:5000")
+    print("Starting web viewer at http://localhost:5000")
     print(f"Connecting to camera at {CAMERA_HOST}:{CAMERA_PORT}")
     print("Press Ctrl+C to exit")
     app.run(host='0.0.0.0', debug=False, threaded=True)

@@ -1,6 +1,9 @@
 import roslibpy
 import time
 
+import traceback
+
+
 def debug_ros_connections():
     client = roslibpy.Ros(host='localhost', port=9090)
     
@@ -34,7 +37,6 @@ def debug_ros_connections():
         
     except Exception as e:
         print(f"Error: {e}")
-        import traceback
         traceback.print_exc()
     finally:
         if client.is_connected:

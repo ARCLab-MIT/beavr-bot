@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
+
 import zmq
 import time
 import pickle
-import numpy as np
-from math import pi
+
 
 def test_cartesian_control():
     # ZMQ setup

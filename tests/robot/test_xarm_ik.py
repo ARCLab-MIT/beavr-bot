@@ -4,6 +4,7 @@ import time
 import numpy as np
 import os
 
+
 def test_xarm_ik():
     # Connect to PyBullet
     physics_client = p.connect(p.GUI)
@@ -134,4 +135,4 @@ def test_xarm_ik():
     p.disconnect()
 
 if __name__ == "__main__":
-    test_xarm_ik() 
+    test_xarm_ik()

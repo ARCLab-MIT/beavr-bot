@@ -3,7 +3,7 @@ import pybullet_data
 import numpy as np
 import os
 import time
-from scipy.spatial.transform import Rotation
+
 
 def test_xarm_joints_setup():
     """Test XArm joints with exact same setup as XArmEnv."""
@@ -240,12 +240,12 @@ def test_xarm_joints_setup():
             state_7 = p.getLinkState(robot_id, 7)
             state_8 = p.getLinkState(robot_id, 8)
             
-            print(f"\nLink 7:")
+            print("\nLink 7:")
             print(f"  Name: {link_7_info[12].decode('utf-8')}")
             print(f"  Position: {state_7[0]}")
             print(f"  Orientation: {state_7[1]}")
             
-            print(f"\nLink 8:")
+            print("\nLink 8:")
             print(f"  Name: {link_8_info[12].decode('utf-8')}")
             print(f"  Position: {state_8[0]}")
             print(f"  Orientation: {state_8[1]}")
@@ -354,4 +354,4 @@ def test_xarm_joints_setup():
     p.disconnect()
 
 if __name__ == "__main__":
-    test_xarm_joints_setup() 
+    test_xarm_joints_setup()

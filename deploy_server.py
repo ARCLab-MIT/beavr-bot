@@ -1,5 +1,6 @@
 import hydra
-from beavr.components.deploy.deployer import DeployServer
+from beavr.teleop.components.deploy.deployer import DeployServer
+
 
 @hydra.main(version_base = '1.2', config_path='./configs', config_name = 'deploy')
 def deploy(configs):
