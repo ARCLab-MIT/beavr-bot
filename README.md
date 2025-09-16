@@ -6,8 +6,8 @@
 </p>
 
 <p align="center">
-  <strong>Alejandro Carrasco</strong> ·
   <strong>Alejandro Posadas-Nava</strong> ·
+  <strong>Alejandro Carrasco</strong> ·
   <strong>Victor Rodriguez-Fernandez</strong> ·
   <strong>Richard Linares</strong>
 </p>
