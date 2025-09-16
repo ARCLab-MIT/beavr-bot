@@ -8,7 +8,6 @@
 <p align="center">
   <strong>Alejandro Posadas-Nava</strong> ·
   <strong>Alejandro Carrasco</strong> ·
-  <strong>Victor Rodriguez-Fernandez</strong> ·
   <strong>Richard Linares</strong>
 </p>
 
