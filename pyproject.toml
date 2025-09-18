@@ -122,6 +122,8 @@ black = "^25.1.0"
 isort = "^6.0.1"
 pre-commit = "^4.3.0"
 debugpy = "^1.8.16"
+jupyterlab = "^4.3.0"
+ipykernel = "^6.29.5"
 
 [tool.ruff]
 target-version = "py310"

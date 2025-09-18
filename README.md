@@ -67,6 +67,16 @@ After installing all the prerequisites, install BeaVR as a package:
 pip install -e .
 ```
 
+Optionally:
+```bash
+poetry install --with dev
+```
+
+Setup pre-commit hooks:
+```bash
+pre-commit install
+```
+
 Verify the installation:
 ```bash
 python -c "import sys;
@@ -127,20 +137,3 @@ This work was sponsored by the Department of the Air Force Artificial Intelligen
 <p align="center">
 <sub><sup>© 2025 Massachusetts Institute of Technology</sup></sub>
 </p>
-
-## Development Setup
-
-1. Install with dev dependencies:
-   ```bash
-   poetry install --with dev
-   ```
-
-2. Set up pre-commit hooks:
-   ```bash
-   pre-commit install
-   ```
-
-3. Run tests:
-   ```bash
-   pytest
-   ```

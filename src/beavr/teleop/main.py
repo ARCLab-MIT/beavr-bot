@@ -62,6 +62,7 @@ class MainConfig:
         # Load robot configuration(s) using utility
         self.robot = load_robot_config(self.robot_name, self.laterality_enum)
 
+    # TODO: Remove this once we have a complete migration to the new structured config
     # Convenience attribute delegation for backward compatibility
     def __getattr__(self, item):
         """Delegate unknown attributes to teleop config for backward compatibility."""
