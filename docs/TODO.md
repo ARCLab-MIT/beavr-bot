@@ -18,6 +18,10 @@ Use `- [ ]` for open tasks and `- [x]` for completed ones.
 - [ ] We also need better control for the xArm robot. Should we add a different IK solver (pink, pyIK, etc...) or different control (calculate direction and velocity and use velocity cartesian control (mode 4)).
 
 ---
+## 🖥️ Interface
+- [ ] Beavr app version 2.0 is out. Can we improve UX and interface?
+
+---
 
 ## 📝 Documentation
 - [ ] We need better documentation for all components
