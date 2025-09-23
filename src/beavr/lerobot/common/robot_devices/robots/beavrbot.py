@@ -12,12 +12,12 @@ from beavr.lerobot.common.robot_devices.cameras.configs import (
 )
 from beavr.lerobot.common.robot_devices.cameras.opencv import OpenCVCamera
 from beavr.lerobot.common.robot_devices.robots.utils import Robot
-from beavr.teleop.common.messaging.handshake import (
+from beavr.teleop.common.network.handshake import (
     HandshakeCoordinator,
     publish_with_guaranteed_delivery,
 )
-from beavr.teleop.common.messaging.publisher import ZMQPublisherManager
-from beavr.teleop.common.messaging.vr import ZMQKeypointSubscriber
+from beavr.teleop.common.network.publisher import ZMQPublisherManager
+from beavr.teleop.common.network.subscriber import ZMQSubscriber
 from beavr.teleop.configs.constants import robots
 
 
@@ -62,7 +62,7 @@ class BeavrBot(Robot):
 
         for config in robot_configs:
             name = config["name"]
-            subscriber = ZMQKeypointSubscriber(
+            subscriber = ZMQSubscriber(
                 host=config["host"],
                 port=config["state_port"],
                 topic=config["state_topic"],

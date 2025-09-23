@@ -6,8 +6,8 @@ import numpy as np
 import zmq
 from scipy.spatial.transform import Rotation
 
-from beavr.teleop.common.messaging.publisher import ZMQPublisherManager
-from beavr.teleop.common.messaging.vr.subscribers import ZMQSubscriber
+from beavr.teleop.common.network.publisher import ZMQPublisherManager
+from beavr.teleop.common.network.subscriber import ZMQSubscriber
 
 logger = logging.getLogger(__name__)
 

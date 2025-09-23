@@ -4,7 +4,7 @@ import numpy as np
 
 from beavr.teleop.components.detector.detector_types import InputFrame
 from beavr.teleop.components.operator.operator_types import CartesianTarget
-from beavr.teleop.components.operator.robot.xarm7_operator import XArmOperator
+from beavr.teleop.components.operator.robots.xarm7_operator import XArmOperator
 from beavr.teleop.configs.constants import robots
 
 

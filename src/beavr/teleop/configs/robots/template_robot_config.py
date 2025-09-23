@@ -9,7 +9,7 @@ from beavr.teleop.components.detector.vr.keypoint_transform import (
 )
 from beavr.teleop.components.detector.vr.oculus import OculusVRHandDetector
 from beavr.teleop.components.interface.interface_base import RobotWrapper
-from beavr.teleop.components.operator.robot.template import TemplateArmOperator
+from beavr.teleop.components.operator.robots.template import TemplateArmOperator
 from beavr.teleop.components.visualizer.visualizer_2d import Hand2DVisualizer
 from beavr.teleop.configs.robots import TeleopRobotConfig
 

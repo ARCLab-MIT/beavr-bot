@@ -6,8 +6,8 @@ import zmq
 from numpy.linalg import pinv
 from scipy.spatial.transform import Rotation, Slerp
 
-from beavr.teleop.common.messaging.publisher import ZMQPublisherManager
-from beavr.teleop.common.messaging.vr.subscribers import ZMQSubscriber
+from beavr.teleop.common.network.publisher import ZMQPublisherManager
+from beavr.teleop.common.network.subscriber import ZMQSubscriber
 from beavr.teleop.common.time.timer import FrequencyTimer
 from beavr.teleop.components.interface.interface_base import RobotWrapper
 from beavr.teleop.components.operator.operator_base import Operator

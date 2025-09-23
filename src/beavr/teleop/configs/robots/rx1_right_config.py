@@ -9,8 +9,8 @@ from beavr.teleop.components.detector.vr.keypoint_transform import (
     TransformHandPositionCoords,
 )
 from beavr.teleop.components.detector.vr.oculus import OculusVRHandDetector
-from beavr.teleop.components.interface.robot.rx1_right_robot import RX1Right
-from beavr.teleop.components.operator.robot.rx1_operator import RX1RightOperator
+from beavr.teleop.components.interface.robots.rx1_right_robot import RX1Right
+from beavr.teleop.components.operator.robots.rx1_operator import RX1RightOperator
 from beavr.teleop.components.visualizer.visualizer_2d import Hand2DVisualizer
 from beavr.teleop.configs.robots import TeleopRobotConfig
 

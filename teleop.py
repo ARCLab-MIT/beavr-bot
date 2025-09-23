@@ -20,7 +20,7 @@ if __name__ == "__main__":
         python teleop.py --robot_name=leap,xarm7 --laterality=bimanual
 
         # With environment config
-        python teleop.py --robot_name=leap,xarm7 --config_file=config/prod.yaml
+        python teleop.py --robot_name=leap,xarm7 --config_file=config/env/prod.yaml
     """
     # Delegate CLI execution.
     main()

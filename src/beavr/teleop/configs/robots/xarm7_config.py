@@ -9,8 +9,8 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
-from beavr.teleop.common.config.loader import Laterality, log_laterality_configuration
-from beavr.teleop.components.interface.robot.xarm7_robot import XArm7Robot
+from beavr.teleop.common.configs.loader import Laterality, log_laterality_configuration
+from beavr.teleop.components.interface.robots.xarm7_robot import XArm7Robot
 
 # Import shared constants and utilities
 from beavr.teleop.configs.constants import network, ports, robots
@@ -96,7 +96,7 @@ class XArm7OperatorCfg:
     stream_oculus: bool = True
     endeff_publish_port: int = ports.XARM_ENDEFF_SUBSCRIBE_PORT
     endeff_subscribe_port: int = ports.XARM_ENDEFF_PUBLISH_PORT
-    moving_average_limit: int = 1
+    moving_average_limit: int = 3
     arm_resolution_port: int = ports.KEYPOINT_STREAM_PORT
     use_filter: bool = False
     teleoperation_state_port: int = ports.XARM_TELEOPERATION_STATE_PORT
@@ -130,13 +130,13 @@ class XArm7OperatorCfg:
     def build(self):
         # Import here to avoid circular imports
         if self.hand_side == robots.RIGHT:
-            from beavr.teleop.components.operator.robot.xarm7_right import (
+            from beavr.teleop.components.operator.robots.xarm7_right import (
                 XArm7RightOperator,
             )
 
             operator_class = XArm7RightOperator
         else:  # LEFT
-            from beavr.teleop.components.operator.robot.xarm7_left import (
+            from beavr.teleop.components.operator.robots.xarm7_left import (
                 XArm7LeftOperator,
             )
 
@@ -206,7 +206,7 @@ class XArm7Config:
                     hand_side=robots.RIGHT,
                     host=network.HOST_ADDRESS,
                     keypoint_sub_port=ports.KEYPOINT_STREAM_PORT,
-                    moving_average_limit=1,
+                    moving_average_limit=3,
                 )
             )
 
@@ -216,7 +216,7 @@ class XArm7Config:
                     hand_side=robots.LEFT,
                     host=network.HOST_ADDRESS,
                     keypoint_sub_port=ports.KEYPOINT_STREAM_PORT,
-                    moving_average_limit=1,
+                    moving_average_limit=3,
                 )
             )
 
@@ -306,7 +306,7 @@ class XArm7Config:
                     stream_oculus=True,
                     endeff_publish_port=ports.XARM_ENDEFF_SUBSCRIBE_PORT,
                     endeff_subscribe_port=ports.XARM_ENDEFF_PUBLISH_PORT,
-                    moving_average_limit=1,
+                    moving_average_limit=3,
                     arm_resolution_port=ports.KEYPOINT_STREAM_PORT,
                     use_filter=False,
                     teleoperation_state_port=ports.XARM_TELEOPERATION_STATE_PORT,
@@ -332,7 +332,7 @@ class XArm7Config:
                     stream_oculus=True,
                     endeff_publish_port=ports.XARM_ENDEFF_SUBSCRIBE_PORT + 2,
                     endeff_subscribe_port=ports.XARM_ENDEFF_PUBLISH_PORT + 2,
-                    moving_average_limit=1,
+                    moving_average_limit=3,
                     arm_resolution_port=ports.KEYPOINT_STREAM_PORT,
                     use_filter=False,
                     teleoperation_state_port=ports.XARM_TELEOPERATION_STATE_PORT,

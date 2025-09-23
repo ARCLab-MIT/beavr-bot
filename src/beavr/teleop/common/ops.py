@@ -2,7 +2,7 @@ import logging
 from enum import IntEnum
 from typing import Generic, Optional, TypeVar
 
-from beavr.teleop.common.messaging.vr.subscribers import ZMQSubscriber
+from beavr.teleop.common.network.subscriber import ZMQSubscriber
 from beavr.teleop.configs.constants import robots
 
 logger = logging.getLogger(__name__)

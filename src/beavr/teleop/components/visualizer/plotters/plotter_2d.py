@@ -7,7 +7,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 
 from beavr.teleop.common.io.files import check_file, get_npz_data, make_dir
-from beavr.teleop.common.messaging.publisher import ZMQCompressedImageTransmitter
+from beavr.teleop.common.network.publisher import ZMQCompressedImageTransmitter
 from beavr.teleop.configs.constants import robots
 
 from .plotter import Plotter

@@ -137,8 +137,8 @@ def _patch_messaging_layer(monkeypatch):
     fake_manager = FakeZMQPublisherManager(_TEST_BUS)
 
     # Patch manager factory
-    import beavr.teleop.common.messaging.handshake as handshake_mod
-    import beavr.teleop.common.messaging.publisher as pub_mod
+    import beavr.teleop.common.network.handshake as handshake_mod
+    import beavr.teleop.common.network.publisher as pub_mod
 
     def _fake_get_instance(context: Any = None):
         return fake_manager
@@ -159,12 +159,12 @@ def _patch_messaging_layer(monkeypatch):
 
     # Patch ZMQSubscriber symbol in modules that import it directly
     monkeypatch.setattr(
-        "beavr.teleop.components.operator.robot.xarm7_operator.ZMQSubscriber",
+        "beavr.teleop.components.operator.robots.xarm7_operator.ZMQSubscriber",
         FakeZMQSubscriber,
         raising=False,
     )
     monkeypatch.setattr(
-        "beavr.teleop.components.interface.robot.xarm7_robot.ZMQSubscriber",
+        "beavr.teleop.components.interface.robots.xarm7_robot.ZMQSubscriber",
         FakeZMQSubscriber,
         raising=False,
     )

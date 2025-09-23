@@ -1,7 +1,7 @@
 import logging
 from abc import ABC, abstractmethod
 
-from beavr.teleop.common.messaging.utils import cleanup_zmq_resources
+from beavr.teleop.common.network.utils import cleanup_zmq_resources
 from beavr.teleop.components import Component
 
 logger = logging.getLogger(__name__)

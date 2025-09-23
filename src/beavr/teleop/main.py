@@ -12,7 +12,7 @@ from typing import Any
 
 import draccus
 
-from beavr.teleop.common.config.loader import (
+from beavr.teleop.common.configs.loader import (
     Laterality,
     apply_yaml_preserving_cli,
     load_robot_config,
@@ -38,7 +38,7 @@ class MainConfig:
     laterality: str = "right"  # Options: "right", "left", "bimanual"
 
     # Optional config file override
-    config_file: str = "config/dev.yaml"
+    config_file: str = "configs/environment/dev.yaml"
 
     # Data storage configuration
     storage_path: str = "data/recordings"

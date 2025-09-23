@@ -9,8 +9,8 @@ from beavr.teleop.common.io.files import get_path_in_package, get_yaml_data
 from beavr.teleop.common.math.vectorops import coord_in_bound
 
 # Holo-bot Components
-from beavr.teleop.common.messaging.publisher import ZMQPublisherManager
-from beavr.teleop.common.messaging.vr.subscribers import ZMQSubscriber
+from beavr.teleop.common.network.publisher import ZMQPublisherManager
+from beavr.teleop.common.network.subscriber import ZMQSubscriber
 from beavr.teleop.common.time.timer import FrequencyTimer
 from beavr.teleop.components.operator.operator_base import Operator
 from beavr.teleop.configs.constants.robots import (

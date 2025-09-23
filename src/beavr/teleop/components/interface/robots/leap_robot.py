@@ -6,11 +6,11 @@ from queue import Queue
 import numpy as np
 
 from beavr.teleop.common.factory.registry import GlobalRegistry
-from beavr.teleop.common.messaging.publisher import ZMQPublisherManager
-from beavr.teleop.common.messaging.utils import cleanup_zmq_resources
-from beavr.teleop.common.messaging.vr.subscribers import ZMQSubscriber
+from beavr.teleop.common.network.publisher import ZMQPublisherManager
+from beavr.teleop.common.network.subscriber import ZMQSubscriber
+from beavr.teleop.common.network.utils import cleanup_zmq_resources
 from beavr.teleop.common.ops import Ops
-from beavr.teleop.components.interface.controller.robot.leap_control import (
+from beavr.teleop.components.interface.controller.robots.leap_control import (
     DexArmControl,
 )
 from beavr.teleop.components.interface.interface_base import RobotWrapper
@@ -337,20 +337,6 @@ class LeapHandRobot(RobotWrapper):
 
             msg_counter += 1
             if now - avg_start_time >= 1.0:
-                avg_freq = msg_counter / (now - avg_start_time)
-
-                # Calculate jitter from individual message intervals
-                jitter_ms = 0.0
-                if len(msg_intervals) > 1:
-                    import statistics
-
-                    jitter_ms = statistics.stdev(msg_intervals)
-
-                target_interval_ms = 1000.0 / self._data_frequency
-                logger.debug(
-                    f"LEAP: Average cmd freq over last second: {avg_freq:6.2f} Hz, Jitter: {jitter_ms:.2f}ms (target interval: {target_interval_ms:.1f}ms)"
-                )
-                avg_start_time = now
                 msg_counter = 0
 
             # Publish comprehensive state data for recording
@@ -393,8 +379,8 @@ class LeapHandRobot(RobotWrapper):
                 state_data = getter_function()
                 if state_data is not None:
                     current_state_dict[key] = state_data
-            except Exception as e:
-                logger.error(f"Failed to get state for '{key}' on robot '{self.name}': {e}")
+            except Exception:
+                # logger.error(f"Failed to get state for '{key}' on robot '{self.name}': {e}")
                 current_state_dict[key] = None
 
         current_state_dict["timestamp"] = publish_time

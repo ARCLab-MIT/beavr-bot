@@ -2,7 +2,7 @@ import logging
 
 import numpy as np
 
-from beavr.teleop.common.messaging.vr.subscribers import ZMQSubscriber
+from beavr.teleop.common.network.subscriber import ZMQSubscriber
 from beavr.teleop.components import Component
 from beavr.teleop.configs.constants import robots
 

@@ -1,0 +1,10 @@
+# Staging Environment Configuration
+# Override network settings for staging/testing environment
+
+teleop:
+  network:
+    host_address: "192.168.1.100"  # Staging host
+    left_xarm_ip: "192.168.1.237"
+    right_xarm_ip: "192.168.1.197"
+    xarm_left_ip: "192.168.1.237"
+    xarm_right_ip: "192.168.1.197"

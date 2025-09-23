@@ -7,14 +7,14 @@ import numpy as np
 from scipy.spatial.transform import Rotation
 
 from beavr.teleop.common.logging.logger import PoseLogger
-from beavr.teleop.common.messaging.handshake import HandshakeCoordinator
-from beavr.teleop.common.messaging.publisher import ZMQPublisherManager
-from beavr.teleop.common.messaging.utils import (
+from beavr.teleop.common.network.handshake import HandshakeCoordinator
+from beavr.teleop.common.network.publisher import ZMQPublisherManager
+from beavr.teleop.common.network.subscriber import ZMQSubscriber
+from beavr.teleop.common.network.utils import (
     SerializationError,
     cleanup_zmq_resources,
     get_global_context,
 )
-from beavr.teleop.common.messaging.vr.subscribers import ZMQSubscriber
 from beavr.teleop.common.time.timer import FrequencyTimer
 from beavr.teleop.components.detector.detector_types import (
     ButtonEvent,
@@ -461,8 +461,8 @@ class XArmOperator(Operator):
             # Ensure rotation part is valid SO(3)
             self.robot_init_h[:3, :3] = self.project_to_rotation_matrix(self.robot_init_h[:3, :3])
 
-        except Exception as e:
-            logger.error(f"ERROR ({self.operator_name}): Failed to process received robot frame: {e}")
+        except Exception:
+            # logger.error(f"ERROR ({self.operator_name}): Failed to process received robot frame: {e}")
             self.is_first_frame = True  # Stay in reset state
             return None
 

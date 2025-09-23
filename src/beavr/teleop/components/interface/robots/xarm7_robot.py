@@ -3,13 +3,13 @@ import time
 
 import numpy as np
 
-from beavr.teleop.common.messaging.handshake import HandshakeCoordinator
-from beavr.teleop.common.messaging.publisher import ZMQPublisherManager
-from beavr.teleop.common.messaging.utils import cleanup_zmq_resources
-from beavr.teleop.common.messaging.vr.subscribers import ZMQSubscriber
+from beavr.teleop.common.network.handshake import HandshakeCoordinator
+from beavr.teleop.common.network.publisher import ZMQPublisherManager
+from beavr.teleop.common.network.subscriber import ZMQSubscriber
+from beavr.teleop.common.network.utils import cleanup_zmq_resources
 from beavr.teleop.common.ops import Ops
 from beavr.teleop.components.detector.detector_types import SessionCommand
-from beavr.teleop.components.interface.controller.robot.xarm7_control import (
+from beavr.teleop.components.interface.controller.robots.xarm7_control import (
     DexArmControl,
 )
 from beavr.teleop.components.interface.interface_base import RobotWrapper

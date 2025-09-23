@@ -7,9 +7,9 @@ from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 
 from beavr.teleop.common.logging.logger import HandLogger
-from beavr.teleop.common.messaging.publisher import ZMQPublisherManager
-from beavr.teleop.common.messaging.utils import cleanup_zmq_resources, get_global_context
-from beavr.teleop.common.messaging.vr.subscribers import ZMQSubscriber
+from beavr.teleop.common.network.publisher import ZMQPublisherManager
+from beavr.teleop.common.network.subscriber import ZMQSubscriber
+from beavr.teleop.common.network.utils import cleanup_zmq_resources, get_global_context
 from beavr.teleop.common.time.timer import FrequencyTimer
 from beavr.teleop.components.detector.detector_types import InputFrame
 from beavr.teleop.components.operator.operator_base import Operator
