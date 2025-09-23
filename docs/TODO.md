@@ -15,7 +15,7 @@ Use `- [ ]` for open tasks and `- [x]` for completed ones.
 - [ ] Find a better solution for LeRobot integration. We will likely have it as a submodule/use the package and maintain a thin wrapper that allows us to use it
 - [ ] The operator code is too long and complicated can we simplify it?
 - [ ] We need better handling of IK for LEAP hand. Can we make the hand more dexterous?
-- [ ] We also need better control for the xArm robot. Should we add a different IK solver (pink, pyIK, etc...) or different control (calculate direction and velocity and use velocity cartesian control (mode 4)).
+- [ ] We also need better control for the xArm robot. Should we add a different IK solver (pink, ikpy, etc...) or different control (calculate direction and velocity and use velocity cartesian control (mode 4)).
 
 ---
 ## 🖥️ Interface
