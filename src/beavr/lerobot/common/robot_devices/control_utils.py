@@ -484,7 +484,7 @@ def stop_recording(robot, listener, display_data):
 
 def sanity_check_dataset_name(repo_id, policy_cfg):
     _, dataset_name = repo_id.split("/")
-    # either repo_id doesnt start with "eval_" and there is no policy
+    # either repo_id doesn't start with "eval_" and there is no policy
     # or repo_id starts with "eval_" and there is a policy
 
     # Check if dataset_name starts with "eval_" but policy is missing

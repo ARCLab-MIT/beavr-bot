@@ -36,9 +36,9 @@ Please:
 
 ### Requesting a Feature?
 A good feature request includes:
-1. **Motivation**  
-   - Is it solving a limitation or frustration in BeaVR?  
-   - Is it something you need for a project? Tell us!  
+1. **Motivation**
+   - Is it solving a limitation or frustration in BeaVR?
+   - Is it something you need for a project? Tell us!
    - Is it something you prototyped and think could benefit others? Even better.
 2. A short description (one paragraph).
 3. (Optional) Example code showing how the feature would be used.
@@ -49,7 +49,7 @@ A good feature request includes:
 
 ## Adding New Robots, Policies, or Environments
 
-BeaVR is designed to be modular.  
+BeaVR is designed to be modular.
 When adding new capabilities, follow the existing API patterns:
 
 - **Robots (URDF + adapters):**
@@ -102,7 +102,7 @@ poetry install --with dev
 ```
 
 Set up pre-commit hooks:
-```bash 
+```bash
 pre-commit install
 ```
 
@@ -172,4 +172,3 @@ python -m pytest -sv ./tests
 Thank you 🎉
 
 Every contribution makes BeaVR stronger and more accessible. Whether you fixed a typo, added a driver for a new robot, or extended simulation support, you’re helping the robotics community.
-

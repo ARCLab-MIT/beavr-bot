@@ -179,7 +179,7 @@ class TemplateArmOperator(Operator):
 
         return homo_mat
 
-    # Function to turn homogenous matrix to cartesian vector
+    # Function to turn homogeneous matrix to cartesian vector
     def _homo2cart(self, homo_mat):
         # Here we will use the resolution scale to set the translation resolution
         t = homo_mat[:3, 3]
@@ -305,7 +305,7 @@ class TemplateArmOperator(Operator):
         # Transformation code
         h_hi_hh = copy(
             self.hand_init_H
-        )  # Homo matrix that takes P_HI to P_HH - Point in Inital Hand Frame to Point in Home Hand Frame
+        )  # Homo matrix that takes P_HI to P_HH - Point in Initial Hand Frame to Point in Home Hand Frame
         h_ht_hh = copy(self.hand_moving_H)  # Homo matrix that takes P_HT to P_HH
         h_ri_rh = copy(self.robot_init_H)  # Homo matrix that takes P_RI to P_RH
 

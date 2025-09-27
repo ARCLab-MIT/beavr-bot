@@ -32,21 +32,21 @@ BeaVR is an open-source, end-to-end teleoperation pipeline that leverages afford
 
 Key features:
 - **VR teleoperation out-of-the-box** – Stream low-latency control and visual feedback through Meta Quest 3 (and any OculusVR supported device) while recording synchronized proprioceptive, visual, and action data.
-- **Multi-embodiment support** – Ships with drivers and URDF assets for the RX-1 full-size humanoid and an xArm + LeapHand dexterous work-cell. The modular hardware abstraction layer lets you drop-in new robots with a single interface file.
+- **Multi-embodiment support** – Ships with drivers and URDF assets for the RX-1 full-size humanoid and an xArm + LeapHand dexterous work-cell. The modular hardware abstraction layer lets you drop in new robots with a single interface file.
 - **Simulation parity** – Mirror every real-world session in MuJoCo or Isaac Gym for rapid domain-randomized policy training or sim-to-real transfer.
 - **Dexterous demonstration collection** – Capture single-hand, bi-manual, or whole-body demonstrations for manipulation, assembly, or locomotion tasks—no motion-capture stage required.
 - **Budget-friendly extensibility** – Works on commodity PCs and laptops with accessible robotics hardware.
 
 ### Why use BeaVR?
 - **Accessible** – No proprietary hardware or licenses; every component is student-budget friendly and permissively BSD-3-licensed.
-- **Modular & maintainable** – Clean and performant python and ROS modules.
-- **LeRobot formatted data** – Standarizing data collection for shared robotics projects.
+- **Modular & maintainable** – Clean and performant Python and ROS modules.
+- **LeRobot formatted data** – Standardizing data collection for shared robotics projects.
 - **Community-driven** – Contributions already include UR-series arms, quadrupeds, and tactile grippers; PRs with new morphologies are welcome.
 
 ## Quick Start
 
 ### Prerequisites
-- Linux system or containeraized environment (see [Docker folder](docker))
+- Linux system or containerized environment (see [Docker folder](docker))
 - NVIDIA GPU with CUDA support (recommended)
 - Meta Quest 3 VR headset
 - Conda package manager
@@ -72,7 +72,7 @@ Optionally:
 poetry install --with dev
 ```
 
-Setup pre-commit hooks:
+Set up pre-commit hooks:
 ```bash
 pre-commit install
 ```

@@ -82,7 +82,7 @@ class LeapHandOperator(Operator):
         # Initialize the PyBullet IK solver with hand sidedness
         self.ik_solver = LeapHandIKSolver(use_gui=False, hand_side=hand_side)
 
-        # Initialzing the moving average queues (kept for compatibility)
+        # Initializing the moving average queues (kept for compatibility)
         self.moving_average_queues = {
             "thumb": [],
             "index": [],

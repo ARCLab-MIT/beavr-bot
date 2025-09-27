@@ -1,12 +1,12 @@
 <!DOCTYPE FilterScript>
 <FilterScript>
  <filter name="Remove Duplicate Vertices"/>
- <filter name="Split Vertexes Incident on Non Manifold Faces">
+ <filter name="Split Vertices Incident on Non Manifold Faces">
   <Param tooltip="When a vertex is split it is moved along the average vector going from its position to the baricyenter of the FF connected faces sharing it" value="0" type="RichFloat" name="VertDispRatio" description="Vertex Displacement Ratio"/>
  </filter>
  <filter name="Select non Manifold Vertices"/>
  <filter name="Remove Faces from Non Manifold Edges"/>
- <filter name="Split Vertexes Incident on Non Manifold Faces">
+ <filter name="Split Vertices Incident on Non Manifold Faces">
   <Param tooltip="When a vertex is split it is moved along the average vector going from its position to the baricyenter of the FF connected faces sharing it" value="0" type="RichFloat" name="VertDispRatio" description="Vertex Displacement Ratio"/>
  </filter>
  <filter name="Select non Manifold Vertices"/>
