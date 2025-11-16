@@ -49,27 +49,41 @@ Key features:
 - Linux system or containeraized environment (see [Docker folder](docker))
 - NVIDIA GPU with CUDA support (recommended)
 - Meta Quest 3 VR headset
-- Conda package manager
+- [uv](https://github.com/astral-sh/uv) package manager (install with: `curl -LsSf https://astral.sh/uv/install.sh | sh`)
+- Build tools: `build-essential`, `python3-dev` (for compiling C extensions)
+- Rust compiler (optional, only needed if building from source): Install via [rustup](https://rustup.rs/) or `sudo apt install rustup && rustup default stable`
 
 ### Installation
 
-#### Conda Environment (Recommended)
+#### uv Environment (Recommended)
 
-For development and running the full system with all dependencies (including PyTorch and simulation tools), we recommend using Conda:
+For development and running the full system with all dependencies (including PyTorch and simulation tools), we recommend using uv:
 
 ```bash
-conda env create -f environment.yml
-conda activate beavr
+# Install Python 3.10.13
+uv python install 3.10.13
+
+# Create virtual environment with Python 3.10.13
+uv venv --python 3.10.13
+
+# Activate the virtual environment
+source .venv/bin/activate  # On Linux/Mac
+# or
+.venv\Scripts\activate  # On Windows
 ```
 
-After installing all the prerequisites, install BeaVR as a package:
+After setting up the environment, install BeaVR as a package using uv:
+
 ```bash
-pip install -e .
+# Install all dependencies including dev extras
+uv sync --extra dev
+
+# This will create a uv.lock file and install everything
 ```
 
-Optionally:
+Alternatively, you can use pip:
 ```bash
-poetry install --with dev
+pip install -e .[dev]
 ```
 
 Setup pre-commit hooks:
@@ -120,14 +134,14 @@ If you use BeaVR in your research, please cite our work:
 
 Copyright (c) 2025 MIT Arclab
 
-Permission is hereby granted, free of charge, to any person obtaining a copy  
-of this software and associated documentation files (the "Software"), to deal  
-in the Software without restriction, including without limitation the rights  
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell  
-copies of the Software, and to permit persons to whom the Software is  
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
 furnished to do so, subject to the following conditions:
 
-The above copyright notice and this permission notice shall be included in all  
+The above copyright notice and this permission notice shall be included in all
 copies or substantial portions of the Software.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.

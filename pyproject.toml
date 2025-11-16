@@ -1,6 +1,6 @@
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "beavr"
@@ -72,7 +72,7 @@ dependencies = [
     "scipy>=1.15.2",
     "tqdm>=4.67.1",
     "gdown>=5.1.0",
-    "transformers",
+    "transformers>=4.50.3",
 
     # Robot-specific dependencies
     "ikpy",
@@ -91,6 +91,9 @@ dev = [
     "black",
     "isort",
     "pre-commit>=3.7.0",
+    "debugpy",
+    "jupyterlab",
+    "ipykernel",
 ]
 
 # LeRobot integration (for using LeRobot alongside BeaVR)
