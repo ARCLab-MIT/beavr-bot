@@ -367,6 +367,7 @@ class LeapHandRobot(RobotWrapper):
         return operator.get_latest_transformed_keypoints()
 
     def publish_current_state(self):
+        # TODO: This needs to be updated along with how external adapters receive data.
         """
         Gathers all state data defined in recorder_functions
         and publishes it as a single dictionary via ZMQ using self.name as topic

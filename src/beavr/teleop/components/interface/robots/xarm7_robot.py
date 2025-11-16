@@ -269,6 +269,7 @@ class XArm7Robot(RobotWrapper):
         try:
             h_matrix = tuple(tuple(float(x) for x in row) for row in pose_homo)
 
+            # TODO: Remove the literal in the topic arg use a constant.
             self._publisher_manager.publish(
                 host=self._publisher_host,
                 port=self._endeff_publish_port,
@@ -353,6 +354,7 @@ class XArm7Robot(RobotWrapper):
                     time.sleep(sleep_time)
 
     def publish_current_state(self):
+        # TODO: This needs to be updated along with how external adapters receive data.
         """
         Gathers interface state and publishes a single dictionary via ZMQ using
         self.name as topic on the state_publish_port. Uses existing types for

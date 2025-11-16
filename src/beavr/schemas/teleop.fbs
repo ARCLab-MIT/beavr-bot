@@ -1,0 +1,77 @@
+namespace BEAVR.Teleop;
+
+// --------------------VR schemas-------------------- //
+
+// Keypoints are the 26 keypoints of the hand derived from the Oculus VR detector.
+// This is the meat of the VR input.
+struct Keypoints {
+  keypoints: [float:26];
+}
+
+struct CoordinateFrame {
+  coordinate_frame: [float:9];
+}
+
+// This controls the teleop state, so we can stop or resume
+// data flow or send generic commands to the robot.
+enum Command:ubyte {
+  pause = 0,
+  resume = 1,
+  reset = 2,
+  home  = 3
+}
+
+// TODO: Resolution is not descriptive enough, we need to add more descriptive names.
+// Resolution is supposed to scale the relative motion of the robot.
+enum Resolution:ubyte { Low = 0, High = 1 }
+
+table VRInput {
+  keypoints: Keypoints;
+  command: Command;
+  resolution: Resolution;
+}
+
+// Helpful when your robot has lateralities.
+enum HandSide:ubyte {
+  left = 0,
+  right = 1
+}
+
+// Stores cartesian poses and keypoint mappings.
+// Helpful for arm and hand robots and should be all you need.
+table InputFrame {
+  hand_side: HandSide;
+  coordinate_frame: CoordinateFrame;
+  keypoints: Keypoints;
+}
+
+// --------------------Component schemas-------------------- //
+
+struct PositionMeters {
+  position_m: [float:3];
+}
+
+struct OrientationQuat {
+  orientation_quat: [float:4];
+}
+
+struct JointPositionsRad {
+  joint_positions_rad: [float:16];
+}
+
+// Matrix used for the relative transformation of the robot.
+struct HomogeneousMatrix {
+  homo_matrix: [float:16];
+}
+
+table CartesianState {
+  hand_side: HandSide;
+  position: PositionMeters;
+  orientation: OrientationQuat;
+  homo_matrix: HomogeneousMatrix;
+}
+
+table JointState {
+  hand_side: HandSide;
+  joint_positions_rad: JointPositionsRad;
+}

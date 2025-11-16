@@ -132,6 +132,9 @@ class OculusVRHandDetector(Component):
                     keypoints = self._process_keypoints(keypoint_data)
                     is_relative = not keypoint_data.decode().strip().startswith(robots.ABSOLUTE)
 
+                    # TODO: We really only need to publish ONCE!
+                    # We can store all information in a single schema table
+
                     self.publisher_manager.publish(
                         host=self.host,
                         port=self.oculus_pub_port,
@@ -181,6 +184,7 @@ class OculusVRHandDetector(Component):
 
             self.timer.end_loop()
 
+        # TODO: We need better cleanup than this
         # Cleanup sockets on exit
         for name, socket in self.sockets.items():
             socket.close()
