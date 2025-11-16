@@ -3,7 +3,8 @@
 # -----------------------------------------------------------------------------
 
 # Host addresses
-HOST_ADDRESS = "10.29.240.172"
+# NOTE: Keep this in sync with your active environment config (e.g. configs/environment/dev.yaml)
+HOST_ADDRESS = "10.0.0.51"
 
 # Robot IP addresses
 LEFT_XARM_IP = "192.168.1.237"

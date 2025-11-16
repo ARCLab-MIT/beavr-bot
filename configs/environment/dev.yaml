@@ -3,7 +3,7 @@
 
 teleop:
   network:
-    host_address: "10.31.140.117"  # Actual network IP for development
+    host_address: "10.0.0.51"  # Actual network IP for development
     left_xarm_ip: "192.168.1.237"
     right_xarm_ip: "192.168.1.197"
     xarm_left_ip: "192.168.1.237"
