@@ -12,6 +12,7 @@ from beavr.teleop.common.network.utils import cleanup_zmq_resources
 from beavr.teleop.common.time.timer import FrequencyTimer
 from beavr.teleop.components import Component
 from beavr.teleop.components.detector.detector_types import InputFrame
+from beavr.teleop.components.detector.vr.log_keypoints import KeypointLogger
 from beavr.teleop.configs.constants import robots
 
 logger = logging.getLogger(__name__)
@@ -30,6 +31,9 @@ class TransformHandPositionCoords(Component):
         keypoint_transform_pub_port: int,
         hand_side: str = robots.RIGHT,
         moving_average_limit: int = 5,
+        enable_logging: bool = False,
+        log_dir: str = "data/keypoint_logs",
+        auto_save_interval: int = 100,
     ):
         """
         Initialize the unified keypoint transform component for both left and right hands.
@@ -40,6 +44,9 @@ class TransformHandPositionCoords(Component):
             keypoint_transform_pub_port: Port to publish transformed keypoints to
             hand_side: 'right' or 'left' to specify which hand to process
             moving_average_limit: Number of frames for moving average smoothing
+            enable_logging: Flag to enable/disable frame logging (default: False)
+            log_dir: Directory to save log files (default: "data/keypoint_logs")
+            auto_save_interval: Number of frames between auto-saves (default: 100)
         """
         # Validate hand_side parameter
         if hand_side not in [robots.LEFT, robots.RIGHT]:
@@ -90,6 +97,16 @@ class TransformHandPositionCoords(Component):
         self.moving_average_limit = moving_average_limit
         # Create a queue for moving average
         self.coord_moving_average_queue, self.frame_moving_average_queue = [], []
+
+        # Initialize keypoint logger if enabled
+        self.keypoint_logger = None
+        if enable_logging:
+            self.keypoint_logger = KeypointLogger(
+                hand_side=hand_side,
+                log_dir=log_dir,
+                auto_save_interval=auto_save_interval,
+                moving_average_limit=moving_average_limit,
+            )
 
     def _get_hand_coords(self):
         """Get hand coordinates from the subscriber.
@@ -167,7 +184,12 @@ class TransformHandPositionCoords(Component):
         return [wrist, x_vec, y_vec, z_vec]
 
     def transform_keypoints(self, hand_coords):
-        """Transform hand keypoints to create a coordinate frame."""
+        """
+        Input: Hand coordinates from VR detector (N,3)
+        Returns:
+        - Transformed hand coordinates (N,3) - Hand keypoints translated to "VR frame"
+        - Hand direction frame (4,3) - Coordinate frame vectors for "VR frame"
+        """
         translated_coords = copy(hand_coords) - hand_coords[0]
 
         # Use the new, more stable coordinate frame method
@@ -175,12 +197,17 @@ class TransformHandPositionCoords(Component):
 
         # Finding the rotation matrix and rotating the coordinates
         rotation_matrix = np.linalg.solve(original_coord_frame, np.eye(3)).T
-        transformed_hand_coords = (rotation_matrix @ translated_coords.T).T
+        transformed_keypoints = (rotation_matrix @ translated_coords.T).T
 
         # Use the new, more stable hand direction frame method
-        hand_dir_frame = self._get_stable_hand_dir_frame(hand_coords)
+        coordinate_frame = self._get_stable_hand_dir_frame(hand_coords)
 
-        return transformed_hand_coords, hand_dir_frame
+        return transformed_keypoints, coordinate_frame
+
+    def _log_frame(self, keypoints, coordinate_frame):
+        """Log frame data if logging is enabled."""
+        if self.keypoint_logger is not None:
+            self.keypoint_logger.log_frame(keypoints, coordinate_frame)
 
     def stream(self):
         """Main streaming loop for processing hand keypoints."""
@@ -195,44 +222,44 @@ class TransformHandPositionCoords(Component):
 
             # Shift the points to required axes
             (
-                transformed_hand_coords,
-                translated_hand_coord_frame,
+                transformed_keypoints,
+                coordinate_frame,
             ) = self.transform_keypoints(hand_coords)
 
             # Passing the transformed coords into a moving average
-            self.averaged_hand_coords = moving_average(
-                transformed_hand_coords,
+            self.averaged_keypoints = moving_average(
+                transformed_keypoints,
                 self.coord_moving_average_queue,
                 self.moving_average_limit,
             )
 
             # Apply moving average to frame vectors
-            self.averaged_hand_frame = moving_average(
-                translated_hand_coord_frame,
+            self.averaged_coordinate_frame = moving_average(
+                coordinate_frame,
                 self.frame_moving_average_queue,
                 self.moving_average_limit,
             )
 
             # Ensure frame vectors remain orthogonal regardless of data type
             # Keep origin point as is
-            origin = self.averaged_hand_frame[0]
+            origin = self.averaged_coordinate_frame[0]
             # Extract the rotation vectors
-            x_vec = normalize_vector(self.averaged_hand_frame[1])
-            y_vec = normalize_vector(self.averaged_hand_frame[2])
-            z_vec = normalize_vector(self.averaged_hand_frame[3])
+            x_vec = normalize_vector(self.averaged_coordinate_frame[1])
+            y_vec = normalize_vector(self.averaged_coordinate_frame[2])
+            z_vec = normalize_vector(self.averaged_coordinate_frame[3])
 
             # Re-orthogonalize the frame
             x_vec, y_vec, z_vec = self._orthogonalize_frame(x_vec, y_vec, z_vec)
 
             # Reconstruct orthogonal frame
-            self.averaged_hand_frame = [origin, x_vec, y_vec, z_vec]
+            self.averaged_coordinate_frame = [origin, x_vec, y_vec, z_vec]
 
             data = InputFrame(
                 timestamp_s=time.time(),
                 hand_side=self.hand_side,
-                keypoints=self.averaged_hand_coords,
+                keypoints=self.averaged_keypoints,
                 is_relative=data_type == self.relative_mode,
-                frame_vectors=self.averaged_hand_frame,
+                frame_vectors=self.averaged_coordinate_frame,
             )
 
             # Publish both transformed coords and frame for consumers
@@ -242,6 +269,10 @@ class TransformHandPositionCoords(Component):
                 topic=self.coords_topic,
                 data=data,
             )
+            # Log and save in a JSON file the hand keypoints and the coordinate frame
+            self._log_frame(self.averaged_keypoints, self.averaged_coordinate_frame)
+            # This is redundant
+            # TODO: Remove this and modify LEAPoperator to use coords topic
             self.publisher_manager.publish(
                 host=self.host,
                 port=self.keypoint_transform_pub_port,
@@ -253,6 +284,12 @@ class TransformHandPositionCoords(Component):
 
     # Cleanup
     def cleanup(self):
+        """Clean up resources and save any remaining logged data."""
+        # Save logged data before cleanup
+        if self.keypoint_logger is not None:
+            logger.info("Cleanup called. Saving final logged data...")
+            self.keypoint_logger.save_data()
+
         self.keypoint_subscriber.stop()
         cleanup_zmq_resources()
 
