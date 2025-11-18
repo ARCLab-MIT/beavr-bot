@@ -270,7 +270,8 @@ class TransformHandPositionCoords(Component):
                 data=data,
             )
             # Log and save in a JSON file the hand keypoints and the coordinate frame
-            self._log_frame(self.averaged_keypoints, self.averaged_coordinate_frame)
+            if self.keypoint_logger is not None:
+                self._log_frame(self.averaged_keypoints, self.averaged_coordinate_frame)
             # This is redundant
             # TODO: Remove this and modify LEAPoperator to use coords topic
             self.publisher_manager.publish(
