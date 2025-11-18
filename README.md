@@ -46,7 +46,7 @@ Key features:
 ## Quick Start
 
 ### Prerequisites
-- Linux system or containeraized environment (see [Docker folder](docker))
+- Linux system or containerized environment (see [Docker folder](docker))
 - NVIDIA GPU with CUDA support (recommended)
 - Meta Quest 3 VR headset
 - [uv](https://github.com/astral-sh/uv) package manager (install with: `curl -LsSf https://astral.sh/uv/install.sh | sh`)
