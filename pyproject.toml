@@ -80,7 +80,7 @@ dependencies = [
     "rospkg",
     "xarm-python-sdk",
     "dynamixel-sdk",
-    "flatbuffers (>=25.9.23,<26.0.0)",
+    "flatbuffers>=25.9.23,<26.0.0",
 ]
 
 [project.optional-dependencies]
