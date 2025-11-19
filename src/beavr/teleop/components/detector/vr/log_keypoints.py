@@ -136,4 +136,5 @@ class KeypointLogger:
         # Auto-save at specified intervals
         if self.frame_counter % self.auto_save_interval == 0:
             self.save_data()
+            self.logged_data.clear()
             logger.debug(f"Auto-saved at frame {self.frame_counter}")
