@@ -273,6 +273,7 @@ class TransformHandPositionCoordsCfg:
             keypoint_transform_pub_port=self.keypoint_transform_pub_port,
             moving_average_limit=self.moving_average_limit,
             hand_side=self.hand_side,
+            enable_logging=False,  # json stored data of keypoints.
         )
 
 

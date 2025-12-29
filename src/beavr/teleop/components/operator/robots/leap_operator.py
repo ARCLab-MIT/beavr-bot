@@ -56,6 +56,7 @@ class LeapHandOperator(Operator):
             message_type=InputFrame,
         )
         # Subscriber for the transformed arm frame
+        # TODO: This subscriber is not used, remove it.
         self._transformed_arm_keypoint_subscriber = ZMQSubscriber(
             host=self._host,
             port=self._port,
@@ -153,7 +154,9 @@ class LeapHandOperator(Operator):
                 "ring": np.vstack([raw_keypoints[0], raw_keypoints[robots.OCULUS_JOINTS["ring"]]]),
                 "thumb": np.vstack([raw_keypoints[0], raw_keypoints[robots.OCULUS_JOINTS["thumb"]]]),
             }
+
             return finger_coords
+
         except (IndexError, TypeError) as e:
             logger.error(f"Error processing keypoints: {e}")
             logger.error(f"Received keypoints shape/content: {raw_keypoints}")
@@ -282,6 +285,7 @@ class LeapHandOperator(Operator):
 
         # Publish joint angles using the new publisher manager
         # Use strongly-typed JointTarget dataclass for operator → interface command
+        # TODO: Remove the literal in the topic arg use a constant.
         self._publisher_manager.publish(
             host=self._publisher_host,
             port=self._joint_angle_publish_port,

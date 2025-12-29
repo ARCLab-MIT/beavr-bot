@@ -106,6 +106,7 @@ class XArmOperator(Operator):
 
         # Optional subscribers
         self._arm_resolution_subscriber = None
+        # TODO: Remove the literal in the topic arg use a constant.
         if arm_resolution_port:
             self._arm_resolution_subscriber = ZMQSubscriber(
                 host=host,
@@ -115,6 +116,7 @@ class XArmOperator(Operator):
                 message_type=ButtonEvent,
             )
 
+        # TODO: Remove the literal in the topic arg use a constant.
         self._arm_teleop_state_subscriber = None
         if teleoperation_state_port:
             self._arm_teleop_state_subscriber = ZMQSubscriber(
@@ -371,6 +373,10 @@ class XArmOperator(Operator):
             return np.eye(3)  # Fallback
 
     def _get_resolution_scale_mode(self) -> float:
+        # TODO: We may not need this anymore I am not too sure what the use case is.
+        # Instead we can default or make this configurable but do we really need it
+        # during real time operation?
+
         """Gets the resolution scale mode from the subscriber."""
         if not self._arm_resolution_subscriber:
             return 1.0  # default if subscriber not configured
@@ -430,6 +436,7 @@ class XArmOperator(Operator):
 
         logger.info(f"****** {self.operator_name}: RESETTING TELEOP ******")
         # Request robot's current pose using a typed contract
+        # TODO: Remove the literal in the topic arg use a constant.
         self._publisher_manager.publish(
             host=self._publisher_host,
             port=self._publisher_port,
@@ -673,6 +680,7 @@ class XArmOperator(Operator):
         # Publish only if tele-operation is in CONT mode
         if publish_commands:
             try:
+                # TODO: Remove the literal in the topic arg use a constant.
                 self._publisher_manager.publish(
                     host=self._publisher_host,
                     port=self._publisher_port,
@@ -726,6 +734,7 @@ class XArmOperator(Operator):
         return np.mean(queue, axis=0)
 
     def run(self):
+        # TODO: Call this method stream to align with rest of the codebase
         """The main execution loop for the operator."""
         try:
             while True:

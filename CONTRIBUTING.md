@@ -88,17 +88,45 @@ git checkout -b feature-my-contribution
 
 ### 3. Install Development Environment
 
-Conda:
-
+**Prerequisites:** Install build tools (Rust is optional, only needed if building from source):
 ```bash
-conda create -y -n beavr-dev python=3.10
-conda activate beavr-dev
-pip install -e .[dev,test]
+sudo apt-get install build-essential python3-dev
+# Rust is optional - newer tokenizers have prebuilt wheels
+# sudo apt install rustup && rustup default stable
 ```
 
-Poetry:
+Using uv (recommended):
+
 ```bash
-poetry install --with dev
+# Install Python 3.10.13
+uv python install 3.10.13
+
+# Create virtual environment
+uv venv --python 3.10.13
+
+# Activate the virtual environment
+source .venv/bin/activate  # On Linux/Mac
+# or
+.venv\Scripts\activate  # On Windows
+
+# Install all dependencies including dev extras
+uv sync --extra dev
+```
+
+Alternatively, using pip:
+
+```bash
+# Install Python 3.10.13
+uv python install 3.10.13
+
+# Create virtual environment
+uv venv --python 3.10.13
+
+# Activate the virtual environment
+source .venv/bin/activate  # On Linux/Mac
+
+# Install dependencies
+pip install -e .[dev]
 ```
 
 Set up pre-commit hooks:
