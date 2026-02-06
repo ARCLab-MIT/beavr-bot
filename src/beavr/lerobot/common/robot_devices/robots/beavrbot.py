@@ -457,7 +457,7 @@ class BeavrBot(Robot):
             logging.warning("WARNING: Not all subscribers acknowledged teleop stop – proceeding anyway")
 
         # Send home signals
-        for _, home_info in self.home_publishers.items():
+        for home_info in self.home_publishers.values():
             self.pub_manager.publish(
                 home_info["host"],
                 home_info["port"],
@@ -486,7 +486,7 @@ class BeavrBot(Robot):
             logging.warning("WARNING: Not all subscribers acknowledged teleop resume – proceeding anyway")
 
         # Send home signals
-        for _, home_info in self.home_publishers.items():
+        for home_info in self.home_publishers.values():
             self.pub_manager.publish(
                 home_info["host"],
                 home_info["port"],

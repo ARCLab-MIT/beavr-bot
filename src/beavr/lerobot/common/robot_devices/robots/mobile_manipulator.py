@@ -180,12 +180,9 @@ class MobileManipulator:
 
     @property
     def available_arms(self):
-        available = []
-        for name in self.leader_arms:
-            available.append(get_arm_id(name, "leader"))
-        for name in self.follower_arms:
-            available.append(get_arm_id(name, "follower"))
-        return available
+        return [get_arm_id(name, "leader") for name in self.leader_arms] + [
+            get_arm_id(name, "follower") for name in self.follower_arms
+        ]
 
     def on_press(self, key):
         try:

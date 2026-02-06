@@ -157,8 +157,7 @@ class SmolVLMWithExpertModel(nn.Module):
                 "lm_head",
                 "text_model.model.norm.weight",
             ]
-            for layer in last_layers:
-                frozen_layers.append(f"text_model.model.layers.{layer}.")
+            frozen_layers.extend(f"text_model.model.layers.{layer}." for layer in last_layers)
 
             for name, params in self.vlm.named_parameters():
                 if any(k in name for k in frozen_layers):

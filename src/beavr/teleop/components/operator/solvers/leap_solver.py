@@ -221,7 +221,7 @@ class LeapHandIKSolver:
 
         # Update with the provided finger positions
         for finger, positions in finger_positions.items():
-            full_finger_positions[finger] = positions
+            full_finger_positions[finger] = positions  # noqa: PERF403
 
         # Check which fingers are active (have positions)
         active_fingers = {

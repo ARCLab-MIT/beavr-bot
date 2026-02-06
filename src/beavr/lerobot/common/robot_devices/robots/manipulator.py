@@ -502,17 +502,11 @@ class ManipulatorRobot:
             self.logs[f"read_follower_{name}_pos_dt_s"] = time.perf_counter() - before_fread_t
 
         # Create state by concatenating follower current position
-        state = []
-        for name in self.follower_arms:
-            if name in follower_pos:
-                state.append(follower_pos[name])
+        state = [follower_pos[name] for name in self.follower_arms if name in follower_pos]
         state = torch.cat(state)
 
         # Create action by concatenating follower goal position
-        action = []
-        for name in self.follower_arms:
-            if name in follower_goal_pos:
-                action.append(follower_goal_pos[name])
+        action = [follower_goal_pos[name] for name in self.follower_arms if name in follower_goal_pos]
         action = torch.cat(action)
 
         # Capture images from cameras
@@ -549,10 +543,7 @@ class ManipulatorRobot:
             self.logs[f"read_follower_{name}_pos_dt_s"] = time.perf_counter() - before_fread_t
 
         # Create state by concatenating follower current position
-        state = []
-        for name in self.follower_arms:
-            if name in follower_pos:
-                state.append(follower_pos[name])
+        state = [follower_pos[name] for name in self.follower_arms if name in follower_pos]
         state = torch.cat(state)
 
         # Capture images from cameras

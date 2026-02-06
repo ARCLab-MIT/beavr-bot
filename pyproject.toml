@@ -154,13 +154,14 @@ exclude = ["tests/artifacts/**/*.safetensors", "*_pb2.py", "*_pb2_grpc.py"]
 # N: pep8-naming
 # TODO: Uncomment rules when ready to use
 select = [
-    "E", "W", "F", "I", "B", "C4", "T20", "N" # "SIM", "A", "S", "D", "RUF", "UP"
+    "ASYNC", "B", "C4", "E", "F", "I", "N", "PERF", "T20", "W" # "A", "D", "RUF", "S", "SIM", "UP"
 ]
 ignore = [
+    "B008", # Perform function call in argument defaults
     "E501", # Line too long
+    "PERF203", # try-except-in-loop
     "T201", # Print statement found
     "T203", # Pprint statement found
-    "B008", # Perform function call in argument defaults
 ]
 
 [tool.ruff.lint.per-file-ignores]

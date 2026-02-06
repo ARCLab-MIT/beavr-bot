@@ -46,34 +46,31 @@ MAX_OPENCV_INDEX = 60
 
 
 def find_cameras(raise_when_empty=False, max_index_search_range=MAX_OPENCV_INDEX, mock=False) -> list[dict]:
-    cameras = []
     if platform.system() == "Linux":
         print("Linux detected. Finding available camera indices through scanning '/dev/video*' ports")
         possible_ports = [str(port) for port in Path("/dev").glob("video*")]
         ports = _find_cameras(possible_ports, mock=mock)
-        for port in ports:
-            cameras.append(
-                {
-                    "port": port,
-                    "index": int(port.removeprefix("/dev/video")),
-                }
-            )
-    else:
-        print(
-            "Mac or Windows detected. Finding available camera indices through "
-            f"scanning all indices from 0 to {MAX_OPENCV_INDEX}"
-        )
-        possible_indices = range(max_index_search_range)
-        indices = _find_cameras(possible_indices, mock=mock)
-        for index in indices:
-            cameras.append(
-                {
-                    "port": None,
-                    "index": index,
-                }
-            )
+        return [
+            {
+                "port": port,
+                "index": int(port.removeprefix("/dev/video")),
+            }
+            for port in ports
+        ]
 
-    return cameras
+    print(
+        "Mac or Windows detected. Finding available camera indices through "
+        f"scanning all indices from 0 to {MAX_OPENCV_INDEX}"
+    )
+    possible_indices = range(max_index_search_range)
+    indices = _find_cameras(possible_indices, mock=mock)
+    return [
+        {
+            "port": None,
+            "index": index,
+        }
+        for index in indices
+    ]
 
 
 def _find_cameras(

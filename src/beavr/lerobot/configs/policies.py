@@ -117,14 +117,14 @@ class PreTrainedConfig(draccus.ChoiceRegistry, HubMixin, abc.ABC):
 
     @property
     def robot_state_feature(self) -> PolicyFeature | None:
-        for _, ft in self.input_features.items():
+        for ft in self.input_features.values():
             if ft.type is FeatureType.STATE:
                 return ft
         return None
 
     @property
     def env_state_feature(self) -> PolicyFeature | None:
-        for _, ft in self.input_features.items():
+        for ft in self.input_features.values():
             if ft.type is FeatureType.ENV:
                 return ft
         return None
@@ -135,7 +135,7 @@ class PreTrainedConfig(draccus.ChoiceRegistry, HubMixin, abc.ABC):
 
     @property
     def action_feature(self) -> PolicyFeature | None:
-        for _, ft in self.output_features.items():
+        for ft in self.output_features.values():
             if ft.type is FeatureType.ACTION:
                 return ft
         return None
