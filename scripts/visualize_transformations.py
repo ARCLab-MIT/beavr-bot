@@ -624,6 +624,109 @@ def plot_transformation_metrics(frames, output_path):
     print(f"Metrics plot saved to {output_path}")
 
 
+def plot_frame_rate(frames, output_path, skip_first_n=10):
+    """Plot frame rate and processing time over time."""
+    fig, axes = plt.subplots(2, 1, figsize=(14, 8))
+
+    # Extract frame processing times
+    frame_indices = []
+    timestamps = []
+    processing_times = []
+    frame_intervals = []
+    frame_rates = []
+
+    for frame_idx, frame in enumerate(frames):
+        metadata = frame.get("metadata", {})
+        timestamp = metadata.get("timestamp", 0)
+        proc_time = metadata.get("frame_processing_time", None)
+
+        if timestamp > 0:
+            frame_indices.append(frame_idx)
+            timestamps.append(timestamp)
+            if proc_time is not None:
+                processing_times.append(proc_time)
+
+    # Skip first n frames for more stable metrics
+    if len(processing_times) > skip_first_n:
+        processing_times = processing_times[skip_first_n:]
+
+    timestamps = np.array(timestamps)
+
+    # Skip first n frames for more stable metrics
+    if len(timestamps) > skip_first_n:
+        timestamps = timestamps[skip_first_n:]
+
+    # Calculate frame intervals (time between consecutive frames)
+    if len(timestamps) > 1:
+        frame_intervals = np.diff(timestamps)
+        # Convert to frame rate (Hz)
+        with np.errstate(divide='ignore', invalid='ignore'):
+            frame_rates = 1.0 / frame_intervals
+
+    # Plot frame processing time
+    ax1 = axes[0]
+    if processing_times:
+        # Convert to milliseconds for better readability
+        processing_times_ms = np.array(processing_times) * 1000
+        ax1.plot(range(len(processing_times_ms)), processing_times_ms, 'b-', linewidth=2, label='Processing Time')
+        ax1.set_ylabel('Processing Time (ms)')
+        ax1.set_title('Frame Processing Time Over Time')
+        ax1.legend()
+        ax1.grid(True, alpha=0.3)
+
+        # Add statistics
+        mean_time = np.mean(processing_times_ms)
+        median_time = np.median(processing_times_ms)
+        max_time = np.max(processing_times_ms)
+        min_time = np.min(processing_times_ms)
+
+        stats_text = f'Mean: {mean_time:.2f} ms\nMedian: {median_time:.2f} ms\nMin: {min_time:.2f} ms\nMax: {max_time:.2f} ms'
+        ax1.text(0.02, 0.98, stats_text, transform=ax1.transAxes, verticalalignment='top',
+                 bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+    else:
+        ax1.text(0.5, 0.5, 'No processing time data available', ha='center', va='center')
+        ax1.set_ylabel('Processing Time (ms)')
+        ax1.set_title('Frame Processing Time Over Time')
+
+    # Plot frame rate
+    ax2 = axes[1]
+    if len(frame_rates) > 0:
+        time_offset = timestamps[0]
+        time_axis = timestamps[:-1] - time_offset
+        valid_indices = ~np.isinf(frame_rates) & ~np.isnan(frame_rates)
+
+        if np.any(valid_indices):
+            ax2.plot(time_axis[valid_indices], frame_rates[valid_indices], 'r-', linewidth=2, label='Frame Rate')
+            ax2.set_xlabel('Time (s)')
+            ax2.set_ylabel('Frame Rate (Hz)')
+            ax2.set_title('Actual Frame Rate Over Time')
+            ax2.legend()
+            ax2.grid(True, alpha=0.3)
+
+            # Add statistics
+            valid_rates = frame_rates[valid_indices]
+            mean_rate = np.mean(valid_rates)
+            median_rate = np.median(valid_rates)
+            min_rate = np.min(valid_rates)
+            max_rate = np.max(valid_rates)
+
+            stats_text = f'Mean: {mean_rate:.2f} Hz\nMedian: {median_rate:.2f} Hz\nMin: {min_rate:.2f} Hz\nMax: {max_rate:.2f} Hz'
+            ax2.text(0.02, 0.98, stats_text, transform=ax2.transAxes, verticalalignment='top',
+                     bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+        else:
+            ax2.text(0.5, 0.5, 'No valid frame rate data', ha='center', va='center')
+    else:
+        ax2.text(0.5, 0.5, 'Insufficient data for frame rate calculation', ha='center', va='center')
+        ax2.set_xlabel('Time (s)')
+        ax2.set_ylabel('Frame Rate (Hz)')
+        ax2.set_title('Actual Frame Rate Over Time')
+
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    plt.close()
+    print(f"Frame rate plot saved to {output_path}")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Visualize operator transformation pipeline")
     parser.add_argument("log_file", type=str, help="Path to transformation pipeline log file")
@@ -631,6 +734,7 @@ def main():
     parser.add_argument("--static", action="store_true", help="Generate static comparison plot")
     parser.add_argument("--metrics", action="store_true", help="Generate metrics plot")
     parser.add_argument("--animate", action="store_true", help="Generate animation")
+    parser.add_argument("--framerate", action="store_true", help="Generate frame rate plot")
 
     args = parser.parse_args()
 
@@ -668,12 +772,16 @@ def main():
         print("Generating metrics plot...")
         plot_transformation_metrics(frames, base_output / "metrics.png")
 
+    if args.framerate:
+        print("Generating frame rate plot...")
+        plot_frame_rate(frames, base_output / "framerate.png")
+
     if args.animate:
         print("Generating animation...")
         create_animation(frames, base_output / "animation.gif")
 
     # If no specific visualization requested, show a single frame
-    if not (args.static or args.metrics or args.animate):
+    if not (args.static or args.metrics or args.framerate or args.animate):
         fig = plt.figure(figsize=(12, 8))
         ax = fig.add_subplot(111, projection="3d")
 

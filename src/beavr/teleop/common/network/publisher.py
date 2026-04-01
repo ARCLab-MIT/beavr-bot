@@ -85,14 +85,27 @@ class PublisherThread(threading.Thread):
             topic: The topic to publish to
             data: The data to publish
         """
+        start = time.perf_counter()
         try:
             # Serialize data here to avoid blocking the main thread
             buffer = pickle.dumps(data, protocol=-1)
+            elapsed_serialize = time.perf_counter() - start
+            t2 = time.perf_counter()
             self._queue.put_nowait((topic, buffer))
+            elapsed_queue = time.perf_counter() - t2
+            elapsed_total = time.perf_counter() - start
+            if elapsed_serialize > 0.001 or elapsed_queue > 0.001:
+                logger.debug(
+                    f"[Timing] Publisher.send serialize={elapsed_serialize*1000:.2f}ms "
+                    f"queue={elapsed_queue*1000:.2f}ms total={elapsed_total*1000:.2f}ms "
+                    f"bytes={len(buffer)} topic={topic}"
+                )
         except queue.Full:
-            logger.warning(f"Publisher queue full for {self._host}:{self._port}, dropping message")
+            elapsed_total = time.perf_counter() - start
+            logger.warning(f"Publisher queue full for {self._host}:{self._port}, dropping message (elapsed={elapsed_total*1000:.2f}ms)")
         except Exception as e:
-            logger.error(f"Error serializing data for publisher: {e}")
+            elapsed_total = time.perf_counter() - start
+            logger.error(f"Error serializing data for publisher: {e} (elapsed={elapsed_total*1000:.2f}ms)")
 
     def stop(self) -> None:
         """Stop the publisher thread gracefully."""

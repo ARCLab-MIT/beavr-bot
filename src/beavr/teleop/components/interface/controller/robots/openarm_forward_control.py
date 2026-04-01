@@ -11,25 +11,23 @@ from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.publisher import Publisher
 from sensor_msgs.msg import JointState
-from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
+from std_msgs.msg import Float64MultiArray
 
 from beavr.teleop.configs.constants import robots
 
 logger = logging.getLogger(__name__)
 
 
-class OpenArmController:
+class OpenArmForwardController:
     def __init__(
         self,
-        trajectory_topic_name: str = "/left_joint_trajectory_controller/joint_trajectory",
+        command_topic_name: str = "/left_forward_position_controller/commands",
         joint_names: Optional[list] = None,
-        trajectory_duration: float = 0.5,
         max_delta: float = 0.5,
     ):
         self.joint_names = joint_names or robots.OPENARM_LEFT_JOINT_NAMES
-        self.trajectory_duration = trajectory_duration
         self.num_joints = len(self.joint_names)
-        self.trajectory_topic_name = trajectory_topic_name
+        self.command_topic_name = command_topic_name
         self.max_delta = max_delta
 
         self._joint_states: Optional[JointState] = None
@@ -40,11 +38,11 @@ class OpenArmController:
 
         self._initialize_ros2()
 
-        logger.info("Creating publisher for joint trajectories")
-        self._joint_trajectory_publisher: Optional[Publisher] = self._node.create_publisher(
-            JointTrajectory, self.trajectory_topic_name, 10
+        logger.info("Creating publisher for joint position commands")
+        self._joint_command_publisher: Optional[Publisher] = self._node.create_publisher(
+            Float64MultiArray, self.command_topic_name, 10
         )
-        logger.info(f"Created publisher for {self.trajectory_topic_name}")
+        logger.info(f"Created publisher for {self.command_topic_name}")
 
         self._joint_state_subscriber = self._node.create_subscription(
             JointState,
@@ -55,7 +53,7 @@ class OpenArmController:
         )
         self._wait_for_joint_states()
         logger.debug("Waiting for first joint state message (non-blocking)...")
-        logger.info(f"OpenArmController initialized, publishing to {self.trajectory_topic_name}")
+        logger.info(f"OpenArmForwardController initialized, publishing to {self.command_topic_name}")
 
     def _initialize_ros2(self):
         logger.info("Starting ROS2 initialization...")
@@ -68,9 +66,9 @@ class OpenArmController:
                 logger.error(f"Failed to initialize rclpy: {e}")
                 raise
 
-        logger.info("Creating ROS2 node: openarm_controller_node")
+        logger.info("Creating ROS2 node: openarm_forward_controller_node")
         try:
-            self._node = Node("openarm_controller_node")
+            self._node = Node("openarm_forward_controller_node")
         except Exception as e:
             logger.error(f"Failed to create ROS2 node: {e}")
             raise
@@ -82,7 +80,7 @@ class OpenArmController:
         self._spin_thread = threading.Thread(target=self._executor.spin, daemon=True)
         self._spin_thread.start()
 
-        logger.info("ROS2 node initialized: openarm_controller_node")
+        logger.info("ROS2 node initialized: openarm_forward_controller_node")
 
     def _joint_state_callback(self, msg: JointState):
         with self._joint_states_lock:
@@ -148,7 +146,7 @@ class OpenArmController:
         return result
 
     def move_arm_joint(self, joint_angles: np.ndarray, duration: Optional[float] = None) -> bool:
-        """Publish joint trajectory to topic with max_delta limit per step"""
+        """Publish joint position commands to topic with max_delta limit per step"""
         op_start = time.perf_counter()
 
         if len(joint_angles) != self.num_joints:
@@ -178,22 +176,12 @@ class OpenArmController:
         logger.debug(f"[Timing] move_arm_joint scaling={(t2 - t1) * 1000:.2f}ms")
 
         t3 = time.perf_counter()
-        duration_sec = duration if duration is not None else self.trajectory_duration
 
-        trajectory = JointTrajectory()
-        trajectory.joint_names = self.joint_names
+        command = Float64MultiArray()
+        command.data = [float(x) for x in scaled_joint_angles]
 
-        point = JointTrajectoryPoint()
-        point.positions = (
-            [float(x) for x in scaled_joint_angles] if hasattr(scaled_joint_angles, "__iter__") else scaled_joint_angles
-        )
-        point.velocities = [0.0] * self.num_joints
-        point.time_from_start = Duration(sec=int(duration_sec), nanosec=int((duration_sec % 1) * 1e9))
-
-        trajectory.points = [point]
-
-        logger.debug(f"Publishing trajectory to {self.trajectory_topic_name}: {scaled_joint_angles}")
-        self._joint_trajectory_publisher.publish(trajectory)
+        logger.debug(f"Publishing position command to {self.command_topic_name}: {scaled_joint_angles}")
+        self._joint_command_publisher.publish(command)
         t4 = time.perf_counter()
         pub_elapsed = t4 - t3
         total_elapsed = time.perf_counter() - op_start
@@ -211,11 +199,11 @@ class OpenArmController:
         return self.home_arm()
 
     def cleanup(self):
-        logger.info("Cleaning up OpenArm controller...")
+        logger.info("Cleaning up OpenArm forward controller...")
         if hasattr(self, "_joint_state_subscriber"):
             self._node.destroy_subscription(self._joint_state_subscriber)
-        if hasattr(self, "_joint_trajectory_publisher"):
-            self._node.destroy_publisher(self._joint_trajectory_publisher)
+        if hasattr(self, "_joint_command_publisher"):
+            self._node.destroy_publisher(self._joint_command_publisher)
         if hasattr(self, "_executor"):
             self._executor.shutdown()
         if hasattr(self, "_node"):
@@ -224,7 +212,7 @@ class OpenArmController:
 
 class DexArmControl:
     def __init__(self, **kwargs):
-        self._controller = OpenArmController(**kwargs)
+        self._controller = OpenArmForwardController(**kwargs)
 
     def get_arm_position(self):
         return self._controller.get_arm_position()

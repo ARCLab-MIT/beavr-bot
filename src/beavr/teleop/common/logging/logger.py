@@ -234,6 +234,7 @@ class PoseLogger(BaseLogger):
         cart_target_raw,
         cart_target_filtered,
         resolution_scale,
+        frame_processing_time=None,
     ):
         """Log detailed transformation pipeline data."""
         if self._closed:
@@ -265,6 +266,7 @@ class PoseLogger(BaseLogger):
                 "resolution_scale": resolution_scale,
                 "timestamp": time.time(),
                 "frame": self.frame_count,
+                "frame_processing_time": frame_processing_time,
             },
         }
 

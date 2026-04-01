@@ -275,11 +275,20 @@ class XArmOperator(Operator):
         The frames use identity rotation with translation in y-axis only.
         """
         self.mock_hand_frames = []
-        for i in range(100):
-            y_position = i / 99.0  # Linear interpolation from 0 to 0.3
+        for i in range(10):
             # Frame format: [translation, x_axis, y_axis, z_axis]
             frame = [
-                [0.0, y_position * 0.3, 0.0],  # Translation: moves in y-axis
+                [0.0, 0.0, 0.0],  # Translation: moves in y-axis
+                [1.0, 0.0, 0.0],  # X-axis identity
+                [0.0, 1.0, 0.0],  # Y-axis identity
+                [0.0, 0.0, 1.0],  # Z-axis identity
+            ]
+            self.mock_hand_frames.append(frame)
+        for i in range(200):
+            y_position = i / 199.0  # Linear interpolation from 0 to 0.3
+            # Frame format: [translation, x_axis, y_axis, z_axis]
+            frame = [
+                [0.0, -y_position * 0.3, 0.0],  # Translation: moves in y-axis
                 [1.0, 0.0, 0.0],  # X-axis identity
                 [0.0, 1.0, 0.0],  # Y-axis identity
                 [0.0, 0.0, 1.0],  # Z-axis identity
@@ -555,6 +564,7 @@ class XArmOperator(Operator):
         )
         robot_frame_homo = self.endeff_homo_subscriber.recv_keypoints()
 
+        logger.info(f"****** {self.operator_name}: RESETTING TELEOP waiting for robot******")
         # Keep trying until we get a response
         while robot_frame_homo is None:
             self._publisher_manager.publish(
@@ -566,6 +576,7 @@ class XArmOperator(Operator):
             robot_frame_homo = self.endeff_homo_subscriber.recv_keypoints()
             time.sleep(0.01)
 
+        logger.info(f"****** {self.operator_name}: RESETTING TELEOP --- robot_frame_homo ******")
         try:
             h = np.array(robot_frame_homo.h_matrix, dtype=np.float64).reshape(4, 4)
             self.robot_init_h = h
@@ -670,9 +681,7 @@ class XArmOperator(Operator):
 
         # Calculate distance between thumb and index fingertips
         distance = np.linalg.norm(thumb_tip - index_tip)
-        logger.debug(
-            f"[gripper] current index thumb distance: {distance * 1000:.1f}mm"
-        )
+        logger.debug(f"[gripper] current index thumb distance: {distance * 1000:.1f}mm")
 
         # Clamp distance to valid range [0, 9cm]
         clamped_distance = min(distance, robots.OPENARM_GRIPPER_THRESHOLD_M)
@@ -699,6 +708,7 @@ class XArmOperator(Operator):
         Handles state changes (reset, pause/resume), applies transformations,
         filters the result, and publishes the command.
         """
+        frame_start_time = time.time()
 
         # 1. Check for state changes (Pause/Resume, Resolution)
         new_arm_teleop_state = self._get_arm_teleop_state()
@@ -887,9 +897,7 @@ class XArmOperator(Operator):
                     topic="gripper_cmd",
                     data=gripper_cmd,
                 )
-                logger.debug(
-                    f"[{self.operator_name}] Published gripper command: width={gripper_width_m:.3f}m"
-                )
+                logger.debug(f"[{self.operator_name}] Published gripper command: width={gripper_width_m:.3f}m")
             except (ConnectionError, SerializationError) as e:
                 logger.error(f"Failed to publish end-effector command: {e}")
             except Exception as e:
@@ -902,6 +910,7 @@ class XArmOperator(Operator):
         # 12. Logging (Optional)
         if self.logging_enabled and self.pose_logger:
             try:
+                frame_processing_time = time.time() - frame_start_time
                 # Identify which matrices have NaN values
                 nan_matrices = []
                 if self.hand_init_h is None or self._contains_nan(self.hand_init_h):
@@ -948,6 +957,7 @@ class XArmOperator(Operator):
                         cart_target_raw=cart_target_raw,
                         cart_target_filtered=cart_target_filtered,
                         resolution_scale=self.resolution_scale,
+                        frame_processing_time=frame_processing_time,
                     )
                     logger.debug(f"Logged transformation pipeline frame {self.pose_logger.frame_count - 1}")
                 else:
