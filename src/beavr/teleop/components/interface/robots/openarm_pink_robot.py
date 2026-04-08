@@ -38,15 +38,19 @@ def _get_next_index():
 # Pink Configuration Constants
 # ============================================================================
 # Task costs for FrameTask (end-effector positioning)
-PINK_POSITION_COST = 1.0  # [cost] / [m]
-PINK_ORIENTATION_COST = 1.0  # [cost] / [rad]
-PINK_LM_DAMPING = 1.0  # Levenberg-Marquardt damping
+PINK_POSITION_COST = 100.0  # [cost] / [m] - increased to prioritize positioning
+PINK_ORIENTATION_COST = 1.0  # [cost] / [rad] - increased to prioritize orientation
+PINK_LM_DAMPING = 0.1  # Levenberg-Marquardt damping
 
 # Posture task for joint regularization
-PINK_POSTURE_COST = 1e-3  # [cost] / [rad]
+PINK_POSTURE_COST = 1e-6  # [cost] / [rad] - reduced to minimize interference with frame task
 
 # IK velocity integration time step
-PINK_IK_DT = 0.01  # seconds
+PINK_IK_DT = 1.1  # seconds - increased for more movement per IK step
+
+# Iterative IK parameters
+PINK_MAX_ITERATIONS = 5  # max IK iterations per call
+PINK_POS_TOLERANCE = 0.01  # position tolerance in meters
 
 # Best-effort joint limits (radians)
 PINK_JOINT_LIMIT_RANGE = np.pi  # +/- π for clamping
@@ -103,49 +107,92 @@ class PinkKinematics:
                 package_dirs=[str(urdf_path_obj.parent)],
                 root_joint=None,
             )
+            logger.info("[PinkKinematics] build robot wrapper from urdf")
             self._robot_model = self._robot_wrapper.model
             self._robot_data = self._robot_wrapper.data
 
+            # Disable joint limit checking by setting limits to very large values
+            if hasattr(self._robot_model, "lowerPositionLimit"):
+                logger.info(f"[PinkKinematics] Original lower limits: {self._robot_model.lowerPositionLimit}")
+                self._robot_model.lowerPositionLimit[:] = -np.pi
+            if hasattr(self._robot_model, "upperPositionLimit"):
+                logger.info(f"[PinkKinematics] Original upper limits: {self._robot_model.upperPositionLimit}")
+                self._robot_model.upperPositionLimit[:] = np.pi
+
             logger.info(
                 f"[PinkKinematics] Robot model loaded: nq={self._robot_model.nq}, nv={self._robot_model.nv}, "
-                f"frames={[f.name for f in self._robot_model.frames[:10]]}..."
+                f"frames={[f.name for f in self._robot_model.frames]}...\n joints: {[joint for joint in self._robot_model.joints]}"
             )
 
             import pink
             from pink.tasks import FrameTask, PostureTask
             import qpsolvers
 
+            logger.info(
+                f"[PinkKinematics] Robot model joint limits: lower={self._robot_model.lowerPositionLimit.shape}, upper={self._robot_model.upperPositionLimit.shape}"
+            )
+            logger.info(f"[PinkKinematics] Robot model lower limits: {self._robot_model.lowerPositionLimit}")
+            logger.info(f"[PinkKinematics] Robot model upper limits: {self._robot_model.upperPositionLimit}")
+            logger.info(
+                f"[PinkKinematics] Robot model nq={self._robot_model.nq}, nv={self._robot_model.nv}, q0 shape={len(self._robot_wrapper.q0)}"
+            )
+
             # Create Configuration with the full robot model
             # pink will solve IK for all joints, but we'll extract only left arm joints later
             self._configuration = pink.Configuration(self._robot_model, self._robot_data, self._robot_wrapper.q0)
 
-            # Find joint indices that correspond to left arm joints
-            # We need to match by frame names instead of joint names
-            left_joint_indices = []
-            left_joint_names_found = []
-            joint_ids = []
-            for frame in self._robot_model.frames:
-                if frame.name in self.joint_names:
-                    # Find the joint index for this frame
-                    joint_id = self._robot_model.getJointId(frame.name)
-                    if joint_id < self._robot_model.njoints and self._robot_model.joints[joint_id].nv > 0:
-                        if joint_id not in joint_ids:
-                            joint_ids.append(joint_id)
-                            left_joint_indices.append(joint_id)
-                            left_joint_names_found.append(frame.name)
+            logger.info(
+                f"[PinkKinematics] Configuration q shape: {self._configuration.q.shape}, value: {self._configuration.q}"
+            )
 
-            logger.info(f"[PinkKinematics] Found {len(left_joint_indices)} left arm joints: {left_joint_names_found}")
-            logger.info(f"[PinkKinematics] Looking for left arm joints in model: {self.joint_names}")
-            logger.info(f"[PinkKinematics] Left joint indices: {left_joint_indices}")
-
-            self._left_joint_indices = left_joint_indices
-
-            if len(left_joint_indices) != len(self.joint_names):
-                logger.warning(
-                    f"[PinkKinematics] Mismatch: Expected {len(self.joint_names)} left arm joints, "
-                    f"but found {len(left_joint_indices)} in model"
+            # Log complete Pink model joint structure for debugging
+            logger.info("[PinkKinematics] Complete Pink model joint structure:")
+            for i in range(self._robot_model.njoints):
+                joint = self._robot_model.joints[i]
+                joint_name = self._robot_model.names[i] if i < len(self._robot_model.names) else f"joint_{i}_unnamed"
+                logger.info(
+                    f"[PinkKinematics]   Pink index {i}: name='{joint_name}', "
+                    f"type={type(joint).__name__}, nq={joint.nq}, nv={joint.nv}"
                 )
 
+            # Build correct joint mapping: controller joint -> Pink model DOF index (idx_q)
+            # Map each joint from OPENARM_LEFT_JOINT_NAMES to its Pinocchio configuration index (idx_q)
+            left_joint_dof_indices = []
+            logger.info("[PinkKinematics] Building joint mapping from controller to Pink model DOF indices:")
+            for i, joint_name in enumerate(self.joint_names):
+                try:
+                    # Get joint ID first, then look up joint object to find idx_q
+                    joint_id = self._robot_model.getJointId(joint_name)
+                    joint = self._robot_model.joints[joint_id]
+                    idx_q = joint.idx_q
+                    logger.info(
+                        f"[PinkKinematics]   Controller[{i}] '{joint_name}' -> joint_id={joint_id}, "
+                        f"type={type(joint).__name__}, nq={joint.nq}, nv={joint.nv}, idx_q={idx_q}, idx_v={joint.idx_v}"
+                    )
+                    if idx_q < 0 or idx_q >= self._robot_model.nq:
+                        logger.error(
+                            f"[PinkKinematics]   ERROR: idx_q={idx_q} out of range (nq={self._robot_model.nq})"
+                        )
+                        raise ValueError(f"Joint DOF index {idx_q} invalid for {joint_name}")
+                    left_joint_dof_indices.append(idx_q)
+                except Exception as e:
+                    logger.error(f"[PinkKinematics]   ERROR: Failed to find Pink DOF index for '{joint_name}': {e}")
+                    raise
+
+            self._left_joint_dof_indices = left_joint_dof_indices
+
+            if len(left_joint_dof_indices) != len(self.joint_names):
+                logger.error(
+                    f"[PinkKinematics] Mismatch: Expected {len(self.joint_names)} left arm joints, "
+                    f"but found {len(left_joint_dof_indices)} in model"
+                )
+                raise ValueError("Failed to map all left arm joints to Pink model")
+
+            logger.info(f"[PinkKinematics] Final joint mapping (controller -> Pinocchio DOF indices):")
+            for i, dof_idx in enumerate(left_joint_dof_indices):
+                logger.info(f"[PinkKinematics]   {i}: '{self.joint_names[i]}' -> idx_q={dof_idx}")
+
+            # Try position-only task to avoid orientation conflicts
             self._end_effector_task = FrameTask(
                 self.ik_link_name,
                 position_cost=PINK_POSITION_COST,
@@ -153,9 +200,9 @@ class PinkKinematics:
                 lm_damping=PINK_LM_DAMPING,
             )
 
-            self._posture_task = PostureTask(cost=PINK_POSTURE_COST)
-
-            self._tasks = [self._end_effector_task, self._posture_task]
+            # Disable posture task for now to debug tiny velocity issue
+            self._posture_task = None
+            self._tasks = [self._end_effector_task]
 
             for task in self._tasks:
                 task.set_target_from_configuration(self._configuration)
@@ -196,22 +243,36 @@ class PinkKinematics:
 
         # Update configuration from seed if provided
         if seed_state is not None:
-            logger.debug(f"[Pink IK] Setting seed state: {seed_state}")
-            # Map seed_state (7 DOF) to full configuration (9 DOF)
+            logger.debug(f"[Pink IK] Setting seed state (7 DOF): {seed_state}")
+            # Map seed_state (7 DOF) to full configuration (18 DOF)
             full_q = self._configuration.q.copy()
-            if hasattr(self, '_left_joint_indices') and len(self._left_joint_indices) >= len(seed_state):
-                for i, idx in enumerate(self._left_joint_indices):
+            if hasattr(self, "_left_joint_dof_indices") and len(self._left_joint_dof_indices) >= len(seed_state):
+                logger.debug(f"[Pink IK] Mapping to DOF indices: {self._left_joint_dof_indices}")
+                for i, idx in enumerate(self._left_joint_dof_indices):
                     if i < len(seed_state):
                         full_q[idx] = seed_state[i]
-                self._configuration.q = full_q
-                logger.debug(f"[Pink IK] Mapped {len(seed_state)} DOF to {len(full_q)} DOF configuration")
+                logger.debug(f"[Pink IK] After mapping, full config (18 DOF): {full_q}")
+                # Update configuration using Pink's update() method
+                self._configuration.update(full_q)
             else:
                 logger.warning("[Pink IK] Could not map seed state to full configuration, using as-is")
-                self._configuration.q[:len(seed_state)] = np.array(seed_state)
+                if len(full_q) >= len(seed_state):
+                    full_q[: len(seed_state)] = np.array(seed_state)
+                    self._configuration.update(full_q)
         else:
             logger.debug(f"[Pink IK] No seed state provided, using current config")
 
         # Create target transform from position + quaternion
+        # Normalize quaternion to ensure unit quaternion
+        orientation_quat = np.array(orientation_quat)
+        norm = np.linalg.norm(orientation_quat)
+        if norm > 1e-6:
+            orientation_quat = orientation_quat / norm
+        else:
+            logger.warning(f"[Pink IK] Quaternion norm ({norm:.2e}) too small, using identity")
+            orientation_quat = np.array([0.0, 0.0, 0.0, 1.0])
+        logger.debug(f"[Pink IK] Normalized quaternion: {orientation_quat}")
+
         r = Rotation.from_quat(orientation_quat)
         rotation_matrix = r.as_matrix()
         logger.debug(f"[Pink IK] Target rotation matrix:\n{rotation_matrix}")
@@ -227,18 +288,55 @@ class PinkKinematics:
         logger.debug(f"[Pink IK] Solving with dt={dt}, solver={self._solver}")
 
         try:
-            velocity = pink.solve_ik(self._configuration, self._tasks, dt, solver=self._solver)
-            logger.debug(f"[Pink IK] Velocity solution: {velocity}")
+            logger.debug(f"[Pink IK] Starting iterative IK with max iterations={PINK_MAX_ITERATIONS}")
 
-            # Integrate velocity to get new joint positions
-            self._configuration.integrate_inplace(velocity, dt)
+            # Iterative IK loop
+            for iteration in range(PINK_MAX_ITERATIONS):
+                # Get current pose and check convergence
+                current_pose = self._configuration.get_transform_frame_to_world(self.ik_link_name)
+                position_error = np.array(target_transform.translation) - np.array(current_pose.translation)
+                position_error_norm = np.linalg.norm(position_error)
+
+                logger.info(
+                    f"[Pink IK] Iteration {iteration + 1}/{PINK_MAX_ITERATIONS}: "
+                    f"current={current_pose.translation}, target={target_transform.translation}, "
+                    f"error={position_error_norm:.4f}m"
+                )
+
+                if position_error_norm < PINK_POS_TOLERANCE:
+                    logger.info(f"[Pink IK] Converged at iteration {iteration + 1}, error={position_error_norm:.4f}m")
+                    break
+
+                # Compute velocity
+                velocity = pink.solve_ik(self._configuration, self._tasks, dt, solver=self._solver, safety_break=False)
+                max_velocity = np.max(np.abs(velocity))
+                logger.debug(f"[Pink IK] Velocity solution: {velocity}")
+                logger.debug(f"[Pink IK] Max velocity: {max_velocity:.6f} rad/s")
+
+                if max_velocity < 1e-8 and position_error_norm > PINK_POS_TOLERANCE:
+                    logger.warning(
+                        f"[Pink IK] Velocity too small ({max_velocity:.2e} rad/s) but error is {position_error_norm:.4f}m"
+                    )
+                    logger.warning(
+                        f"[Pink IK] Possible issues: wrong DOF indices, task costs, or collision constraints"
+                    )
+
+                # Integrate velocity
+                self._configuration.integrate_inplace(velocity, dt)
+                logger.debug(f"[Pink IK] Configuration after integration: {self._configuration.q}")
+
+            # Final position check
+            current_pose = self._configuration.get_transform_frame_to_world(self.ik_link_name)
+            final_error = np.array(target_transform.translation) - np.array(current_pose.translation)
+            final_error_norm = np.linalg.norm(final_error)
+            logger.info(f"[Pink IK] Final position error: {final_error_norm:.4f}m")
 
             # Get joint angles and apply best-effort clamping
             full_joint_angles = self._configuration.q.copy()
 
             # Extract only left arm joint angles
-            if hasattr(self, '_left_joint_indices') and len(self._left_joint_indices) > 0:
-                joint_angles = np.array([full_joint_angles[i] for i in self._left_joint_indices])
+            if hasattr(self, "_left_joint_dof_indices") and len(self._left_joint_dof_indices) > 0:
+                joint_angles = np.array([full_joint_angles[i] for i in self._left_joint_dof_indices])
             else:
                 joint_angles = full_joint_angles
 
@@ -250,6 +348,7 @@ class PinkKinematics:
             logger.info(
                 f"[Pink IK] SUCCESS: computed {len(joint_angles)} joint angles in {elapsed * 1000:.2f}ms: {joint_angles}"
             )
+            logger.debug(f"[Pink IK] Full configuration after IK: {full_joint_angles}")
 
             return joint_angles.tolist()
 
@@ -274,8 +373,22 @@ class PinkKinematics:
         start_time = time.perf_counter()
 
         try:
-            # Update configuration
-            self._configuration.q = np.array(joint_angles)
+            # Map 7-DOF joint angles to full configuration (18 DOF)
+            full_q = self._configuration.q.copy()
+            if hasattr(self, "_left_joint_dof_indices") and len(self._left_joint_dof_indices) >= len(joint_angles):
+                logger.debug(f"[Pink FK] Mapping {len(joint_angles)} DOF to indices {self._left_joint_dof_indices}")
+                for i, idx in enumerate(self._left_joint_dof_indices):
+                    if i < len(joint_angles):
+                        full_q[idx] = joint_angles[i]
+                logger.debug(f"[Pink FK] Full config after mapping: {full_q}")
+                # Update configuration using Pink's update() method
+                self._configuration.update(full_q)
+            else:
+                logger.warning("[Pink FK] Could not map joint angles to full configuration")
+                if len(full_q) == len(joint_angles):
+                    self._configuration.update(np.array(joint_angles))
+                else:
+                    raise ValueError(f"Configuration length mismatch: {len(full_q)} != {len(joint_angles)}")
 
             # Get transform to end-effector frame
             transform = self._configuration.get_transform_frame_to_world(self.ik_link_name)
@@ -401,11 +514,9 @@ class OpenArmPinkRobot(RobotWrapper):
         self._latest_commanded_cartesian_timestamp = 0.0
 
         self._latest_joint_angles = None
-        self._latest_cartesian_pose = None
         self._cartesian_tolerance = 0.001
 
         self._joint_angles_lock = threading.Lock()
-        self._cartesian_pose_lock = threading.Lock()
 
         self._frame_rate_history = []
         self._frame_timestamps = []
@@ -417,17 +528,21 @@ class OpenArmPinkRobot(RobotWrapper):
         self._ik_completed_history = np.zeros(1000, dtype=bool)
         self._history_index = 0
 
-        self._pending_fk_joints = None
-
         self._handshake_coordinator = HandshakeCoordinator.get_instance()
         self._handshake_server_id = f"{self.name}_handshake"
 
-        self._handshake_coordinator.start_server(
-            subscriber_id=self._handshake_server_id,
-            bind_host="*",
-            port=robots.TELEOP_HANDSHAKE_PORT + 10,
-        )
-        logger.info(f"Handshake server started for {self.name}")
+        try:
+            self._handshake_coordinator.start_server(
+                subscriber_id=self._handshake_server_id,
+                bind_host="*",
+                port=robots.TELEOP_HANDSHAKE_PORT + 10,
+            )
+            logger.info(f"Handshake server started for {self.name}")
+        except Exception as e:
+            logger.error(f"Failed to start handshake server on port {robots.TELEOP_HANDSHAKE_PORT + 10}: {e}")
+            logger.info("Attempting to continue without handshake server...")
+            # Set a flag to indicate handshake is not available
+            self._handshake_available = False
 
         self._is_homed = False
 
@@ -490,39 +605,18 @@ class OpenArmPinkRobot(RobotWrapper):
         start = time.perf_counter()
         joint_positions = self._controller.get_arm_position()
         elapsed1 = time.perf_counter() - start
-        # logger.debug(f"[Timing] get_cartesian_state op_id={op_id} get_pos={elapsed1 * 1000:.2f}ms")
+        logger.debug(f"[Timing] get_cartesian_state op_id={op_id} get_pos={elapsed1 * 1000:.2f}ms")
         if joint_positions is None:
             return None
 
-        check_start = time.perf_counter()
-        joints_tuple = tuple(joint_positions) if hasattr(joint_positions, "__iter__") else (joint_positions,)
-
-        with self._cartesian_pose_lock:
-            pose = self._latest_cartesian_pose
-            if self._pending_fk_joints is not None and self._pending_fk_joints == joints_tuple:
-                # logger.debug(f"[Timing] get_cartesian_state op_id={op_id} pending_fk=True (duplicate)")
-                return {"cartesian_position": pose, "timestamp": time.time()} if pose is not None else None
-            self._pending_fk_joints = joints_tuple
-
-        if pose is not None:
-            elapsed_total = time.perf_counter() - start
-            # logger.debug(f"[Timing] get_cartesian_state op_id={op_id} total={elapsed_total * 1000:.2f}ms (cached)")
-            return {
-                "cartesian_position": pose,
-                "timestamp": time.time(),
-            }
-
-        # Compute FK directly (synchronous)
+        # Compute FK directly (synchronous) - no caching
         h_matrix = self._kinematics.compute_fk(joint_positions)
         if h_matrix is not None:
-            with self._cartesian_pose_lock:
-                self._latest_cartesian_pose = h_matrix
-                self._pending_fk_joints = None
             elapsed_total = time.perf_counter() - start
-            # logger.debug(f"[Timing] get_cartesian_state op_id={op_id} total={elapsed_total * 1000:.2f}ms (new FK)")
+            logger.debug(f"[Timing] get_cartesian_state op_id={op_id} total={elapsed_total * 1000:.2f}ms")
             return {"cartesian_position": h_matrix, "timestamp": time.time()}
         else:
-            # logger.warning(f"[Timing] get_cartesian_state op_id={op_id} FK returned None")
+            logger.warning(f"[Timing] get_cartesian_state op_id={op_id} FK returned None")
             return None
 
     def get_joint_position(self):
@@ -540,38 +634,15 @@ class OpenArmPinkRobot(RobotWrapper):
         start = time.perf_counter()
         joint_positions = self._controller.get_arm_position()
         elapsed1 = time.perf_counter() - start
-        log_prefix = f"[Timing] get_cartesian_position op_id={op_id} get_pos={elapsed1 * 1000:.2f}ms"
+        logger.debug(f"[Timing] get_cartesian_position op_id={op_id} get_pos={elapsed1 * 1000:.2f}ms")
         if joint_positions is None:
-            # logger.debug(f"{log_prefix} result=None (no_positions)")
+            logger.warning(f"[Timing] get_cartesian_position op_id={op_id} result=None (no_positions)")
             return None
 
-        check_start = time.perf_counter()
-        joints_tuple = tuple(joint_positions) if hasattr(joint_positions, "__iter__") else (joint_positions,)
-        check_pending = time.perf_counter() - check_start
-
-        with self._cartesian_pose_lock:
-            result = self._latest_cartesian_pose
-            pending_check = time.perf_counter() - check_start
-            if self._pending_fk_joints is not None and self._pending_fk_joints == joints_tuple:
-                # logger.debug(f"{log_prefix} pending_fk=True (duplicate), skipping")
-                return result
-            self._pending_fk_joints = joints_tuple
-
-        if result is not None:
-            elapsed_total = time.perf_counter() - start
-            logger.debug(
-                f"{log_prefix} fk=CACHED total={elapsed_total * 1000:.2f}ms pending_check={pending_check * 1000:.2f}ms"
-            )
-
-        # Compute FK directly (synchronous)
+        # Compute FK directly (synchronous) - no caching
         result = self._kinematics.compute_fk(joint_positions)
-        if result is not None:
-            with self._cartesian_pose_lock:
-                self._latest_cartesian_pose = result
-                self._pending_fk_joints = None
-            elapsed_total = time.perf_counter() - start
-            # logger.debug(f"{log_prefix} fk=NEW total={elapsed_total * 1000:.2f}ms")
-
+        elapsed_total = time.perf_counter() - start
+        logger.debug(f"[Timing] get_cartesian_position op_id={op_id} total={elapsed_total * 1000:.2f}ms")
         return result
 
     def reset(self):
@@ -650,22 +721,13 @@ class OpenArmPinkRobot(RobotWrapper):
         start = time.perf_counter()
         joint_positions = self._controller.get_arm_position()
         elapsed1 = time.perf_counter() - start
-        # logger.debug(f"[Timing] send_robot_pose op_id={op_id} get_pos={elapsed1 * 1000:.2f}ms")
+        logger.debug(f"[Timing] send_robot_pose op_id={op_id} get_pos={elapsed1 * 1000:.2f}ms")
         if joint_positions is None:
             logger.warning("Could not get joint positions for robot pose")
             return
 
-        # Try to get cached pose
-        with self._cartesian_pose_lock:
-            pose_homo = self._latest_cartesian_pose
-
-        # If no cached pose, compute FK directly
-        if pose_homo is None or not isinstance(pose_homo, (list, tuple)) or len(pose_homo) != 4:
-            pose_homo = self._kinematics.compute_fk(joint_positions)
-            if pose_homo is not None:
-                with self._cartesian_pose_lock:
-                    self._latest_cartesian_pose = pose_homo
-                    self._pending_fk_joints = None
+        # Compute FK directly - no caching
+        pose_homo = self._kinematics.compute_fk(joint_positions)
 
         # Publish the pose
         if pose_homo is not None:
@@ -690,7 +752,7 @@ class OpenArmPinkRobot(RobotWrapper):
                 logger.error(f"Failed to publish robot pose for {self.name}: {e}")
 
         elapsed_total = time.perf_counter() - start
-        # logger.debug(f"[Timing] send_robot_pose op_id={op_id} total={elapsed_total * 1000:.2f}ms")
+        logger.debug(f"[Timing] send_robot_pose op_id={op_id} total={elapsed_total * 1000:.2f}ms")
 
     def check_reset(self):
         op_id = _get_next_index()
@@ -724,6 +786,7 @@ class OpenArmPinkRobot(RobotWrapper):
         while True:
             logger.info("[robot] while true")
             current_time = time.time()
+            logger.debug(f"[ROBOT] Controller joint positions: {self._controller.get_arm_position()}")
 
             self._history_index = frame_count % 1000
 
@@ -801,7 +864,7 @@ class OpenArmPinkRobot(RobotWrapper):
                     )
                     t10 = time.perf_counter()
                     # logger.debug(f"[Timing] frame {frame_count} position_check={(t10 - t9) * 1000:.2f}ms")
-
+                    position_changed = False
                     if self._latest_commanded_cartesian_position is None or not position_changed:
                         logger.debug("[ROBOT] Cartesian position changed, computing IK")
                         position = new_cartesian_position[:3]
@@ -811,9 +874,18 @@ class OpenArmPinkRobot(RobotWrapper):
                         target_pos = new_cartesian_position.copy()
                         target_time = new_cartesian_timestamp
 
-                        # Synchronous IK call (no callback needed)
+                        # Get current joint positions as seed for IK
+                        seed_joints = self._controller.get_arm_position()
+                        if seed_joints is not None:
+                            logger.debug(f"[ROBOT] Using seed joints for IK: {seed_joints}")
+                        else:
+                            logger.warning(
+                                "[ROBOT] Could not get seed joints from controller, IK will use current config"
+                            )
+
+                        # Synchronous IK call with seed state (if available)
                         ik_start = time.perf_counter()
-                        joint_angles = self._kinematics.compute_ik(position, orientation)
+                        joint_angles = self._kinematics.compute_ik(position, orientation, seed_state=seed_joints)
                         ik_elapsed = time.perf_counter() - ik_start
 
                         if joint_angles is not None:
@@ -850,18 +922,12 @@ class OpenArmPinkRobot(RobotWrapper):
                 t14 = time.perf_counter()
                 # logger.debug(f"[Timing] frame {frame_count} _send_joint_trajectory={(t14 - t13) * 1000:.2f}ms")
 
-                t15 = time.perf_counter()
                 self.publish_current_state()
-                t16 = time.perf_counter()
-                # logger.debug(f"[Timing] frame {frame_count} publish_current_state={(t16 - t15) * 1000:.2f}ms")
-
                 sleep_time = max(0, next_frame_time - time.time())
                 if sleep_time > 0:
                     time.sleep(sleep_time)
 
                 frame_count += 1
-                frame_elapsed = time.perf_counter() - frame_start
-                # logger.debug(f"[Timing] frame {frame_count} TOTAL={frame_elapsed * 1000:.2f}ms")
 
     def publish_current_state(self):
         op_id = _get_next_index()
@@ -896,26 +962,26 @@ class OpenArmPinkRobot(RobotWrapper):
             topic=self.name,
             data=current_state_dict,
         )
+
+        logger.debug(f"[PINK] publish state {current_state_dict}")
         publish_elapsed = time.perf_counter() - publish_start
         total_elapsed = time.perf_counter() - start
-
-        # logger.debug(
-        #    f"[Timing] publish_current_state op_id={op_id} "
-        #    f"getters={elapsed_getters * 1000:.2f}ms "
-        #    f"publish={publish_elapsed * 1000:.2f}ms "
-        #    f"total={total_elapsed * 1000:.2f}ms"
-        # )
 
     def shutdown(self):
         """Graceful shutdown"""
         logger.info("Shutting down OpenArmPinkRobot...")
         if hasattr(self, "_handshake_coordinator") and hasattr(self, "_handshake_server_id"):
-            self._handshake_coordinator.stop_server(self._handshake_server_id)
+            try:
+                self._handshake_coordinator.stop_server(self._handshake_server_id)
+                logger.info("Handshake server stopped successfully")
+            except Exception as e:
+                logger.warning(f"Failed to stop handshake server: {e}")
         if hasattr(self, "_kinematics"):
             self._kinematics.cleanup()
         if hasattr(self, "_controller"):
             self._controller.cleanup()
         cleanup_zmq_resources()
+        logger.info("OpenArmPinkRobot shutdown complete")
 
     def __del__(self):
         self.shutdown()

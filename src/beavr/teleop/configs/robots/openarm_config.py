@@ -14,6 +14,7 @@ from typing import Any
 from beavr.teleop.common.configs.loader import Laterality, log_laterality_configuration
 from beavr.teleop.components.interface.controller.robots.openarm_gripper_control import OpenArmGripperRobot
 from beavr.teleop.components.interface.robots.openarm_robot import OpenArmRobot
+from beavr.teleop.components.interface.robots.openarm_pink_robot import OpenArmPinkRobot
 from beavr.teleop.configs.constants import network, ports, robots
 from beavr.teleop.configs.robots import TeleopRobotConfig
 from beavr.teleop.configs.robots.shared_components import SharedComponentRegistry
@@ -56,7 +57,7 @@ class OpenArmRobotCfg:
                 raise ValueError(f"Port out of valid range (1-65535): {port}")
 
     def build(self):
-        return OpenArmRobot(
+        return OpenArmPinkRobot(
             host=self.host,
             endeff_publish_port=self.endeff_publish_port,
             endeff_subscribe_port=self.endeff_subscribe_port,
