@@ -190,8 +190,6 @@ class XArmOperator(Operator):
         # Set default mock frames: continuous movement from y=0 to y=0.3 over 100 frames
         self._generate_default_mock_frames()
 
-        # NOTE: To enable mock mode, add this line after operator initialization:
-        # operator.use_mock_hand_frames = True
 
         # Filter setup
         self.use_filter = use_filter
@@ -301,27 +299,6 @@ class XArmOperator(Operator):
         if arr is None:
             return True
         return bool(np.any(np.isnan(arr)))
-
-    ## ------------------------------
-    ## Frame / Matrix utilities
-    ## ------------------------------
-    # def _generate_default_mock_frames(self):
-    #    """
-    #    Generate default mock frames: continuous movement from y=0 to y=0.3 over 100 frames.
-    #    The frames use identity rotation with translation in y-axis only.
-    #    """
-    #    self.mock_hand_frames = []
-    #    for i in range(100):
-    #        y_position = (i / 99.0) * 0.3  # Linear interpolation from 0 to 0.3
-    #        # Frame format: [translation, x_axis, y_axis, z_axis]
-    #        frame = [
-    #            [0.0, y_position, 0.0],      # Translation: moves in y-axis
-    #            [1.0, 0.0, 0.0],              # X-axis identity
-    #            [0.0, 1.0, 0.0],              # Y-axis identity
-    #            [0.0, 0.0, 1.0]               # Z-axis identity
-    #        ]
-    #        self.mock_hand_frames.append(frame)
-    #    logger.info(f"Generated {len(self.mock_hand_frames)} default mock frames (y: 0→0.3)")
 
     def set_mock_hand_frames(self, frames: list):
         """

@@ -23,7 +23,7 @@ class OpenArmForwardController:
         self,
         command_topic_name: str = "/openarm_left_arm_forward_position_controller/commands",
         joint_names: Optional[list] = None,
-        max_delta: float = 0.05,
+        max_delta: float = 0.2,
     ):
         self.joint_names = joint_names or robots.OPENARM_LEFT_JOINT_NAMES
         self.num_joints = len(self.joint_names)

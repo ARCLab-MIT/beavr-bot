@@ -7,7 +7,7 @@ numbers.  Override any field as usual when you instantiate the dataclass.
 
 import logging
 from dataclasses import dataclass
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from beavr.teleop.components.detector.vr.keypoint_transform import (
     TransformHandPositionCoords,
@@ -164,6 +164,12 @@ class UnifiedOculusVRHandDetectorCfg:
     hand_config: str = robots.RIGHT
     hand_side: str = robots.RIGHT  # For identification purposes
 
+    # Mock and recording mode configuration
+    use_mock_mode: bool = False
+    mock_data_path: Optional[str] = None
+    record_mode: bool = False
+    record_output_path: Optional[str] = None
+
     def __post_init__(self):
         """Validate port configuration."""
         all_ports = [self.oculus_pub_port, self.button_port, self.teleop_reset_port]
@@ -196,6 +202,12 @@ class UnifiedOculusVRHandDetectorCfg:
 
         if self.hand_config in [robots.LEFT, robots.BIMANUAL]:
             kwargs["left_hand_port"] = ports.LEFT_HAND_OCULUS_RECEIVER_PORT
+
+        # Add mock and recording configuration
+        kwargs["use_mock_mode"] = self.use_mock_mode
+        kwargs["mock_data_path"] = self.mock_data_path
+        kwargs["record_mode"] = self.record_mode
+        kwargs["record_output_path"] = self.record_output_path
 
         return OculusVRHandDetector(**kwargs)
 
