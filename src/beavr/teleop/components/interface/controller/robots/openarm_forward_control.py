@@ -38,11 +38,9 @@ class OpenArmForwardController:
 
         self._initialize_ros2()
 
-        logger.info("Creating publisher for joint position commands")
         self._joint_command_publisher: Optional[Publisher] = self._node.create_publisher(
             Float64MultiArray, self.command_topic_name, 10
         )
-        logger.info(f"Created publisher for {self.command_topic_name}")
 
         self._joint_state_subscriber = self._node.create_subscription(
             JointState,
@@ -107,23 +105,16 @@ class OpenArmForwardController:
                 self._current_joint_efforts = np.array(efforts, dtype=np.float32)
 
     def _wait_for_joint_states(self, timeout: float = 10.0):
-        logger.info("Waiting for joint states...")
         start_time = time.time()
         while self._current_joint_positions is None:
             if time.time() - start_time > timeout:
                 logger.error("Timeout waiting for joint states")
                 return False
             time.sleep(0.1)
-        logger.info("Received joint states")
         return True
 
     def get_arm_position(self) -> Optional[np.ndarray]:
-        start = time.perf_counter()
-        result = self._current_joint_positions
-        elapsed = time.perf_counter() - start
-        if elapsed > 0.001:
-            logger.debug(f"[Timing] get_arm_position elapsed={elapsed * 1000:.2f}ms")
-        return result
+        return self._current_joint_positions
 
     def get_arm_velocity(self) -> Optional[np.ndarray]:
         return self._current_joint_velocities
@@ -132,7 +123,6 @@ class OpenArmForwardController:
         return self._current_joint_efforts
 
     def get_arm_states(self) -> dict:
-        start = time.perf_counter()
         with self._joint_states_lock:
             result = {
                 "joint_position": self._current_joint_positions,
@@ -140,20 +130,15 @@ class OpenArmForwardController:
                 "joint_torque": self._current_joint_efforts,
                 "timestamp": time.time(),
             }
-        elapsed = time.perf_counter() - start
-        if elapsed > 0.001:
-            logger.debug(f"[Timing] get_arm_states elapsed={elapsed * 1000:.2f}ms")
         return result
 
     def move_arm_joint(self, joint_angles: np.ndarray, duration: Optional[float] = None) -> bool:
         """Publish joint position commands to topic with max_delta limit per step"""
-        op_start = time.perf_counter()
 
         if len(joint_angles) != self.num_joints:
             logger.error(f"Expected {self.num_joints} joint angles, got {len(joint_angles)}")
             return False
 
-        t1 = time.perf_counter()
         if self._current_joint_positions is None:
             logger.warning("No current joint positions available, sending goal directly")
             scaled_joint_angles = joint_angles
@@ -165,30 +150,14 @@ class OpenArmForwardController:
                 scale_factor = self.max_delta / max_delta_abs
                 scaled_delta = delta * scale_factor
                 scaled_joint_angles = self._current_joint_positions + scaled_delta
-                logger.debug(
-                    f"Scaling joint movement: max_delta={max_delta_abs:.4f} > limit={self.max_delta}, "
-                    f"scale_factor={scale_factor:.4f}"
-                )
+
             else:
                 scaled_joint_angles = joint_angles
-                logger.debug(f"Joint movement within limits: max_delta={max_delta_abs:.4f}")
-        t2 = time.perf_counter()
-        logger.debug(f"[Timing] move_arm_joint scaling={(t2 - t1) * 1000:.2f}ms")
-
-        t3 = time.perf_counter()
 
         command = Float64MultiArray()
         command.data = [float(x) for x in scaled_joint_angles]
 
-        logger.debug(f"Publishing position command to {self.command_topic_name}: {scaled_joint_angles}")
         self._joint_command_publisher.publish(command)
-        t4 = time.perf_counter()
-        pub_elapsed = t4 - t3
-        total_elapsed = time.perf_counter() - op_start
-        if pub_elapsed > 0.001:
-            logger.debug(
-                f"[Timing] move_arm_joint publish={pub_elapsed * 1000:.2f}ms total={total_elapsed * 1000:.2f}ms"
-            )
         return True
 
     def home_arm(self) -> bool:
