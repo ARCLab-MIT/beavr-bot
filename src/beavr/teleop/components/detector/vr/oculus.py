@@ -225,6 +225,8 @@ class OculusVRHandDetector(Component):
                     # TODO: We really only need to publish ONCE!
                     # We can store all information in a single schema table
 
+                    logging.getLogger("movePerf").log(logging.DEBUG, f"Oculus Keypoints received ({len(keypoints)}) on topic {hand_side}")
+
                     self.publisher_manager.publish(
                         host=self.host,
                         port=self.oculus_pub_port,

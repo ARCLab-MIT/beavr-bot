@@ -9,7 +9,8 @@ Uses the structured configuration system with automatic CLI flag generation via 
 import logging
 from dataclasses import dataclass, field
 from typing import Any
-
+import time
+from pathlib import Path
 import draccus
 
 from beavr.teleop.common.configs.loader import (
@@ -178,6 +179,21 @@ def main(cfg: MainConfig):
             --teleop.ports.keypoint_stream_port=9000 \
             --teleop.ports.control_stream_port=9001
     """
+
+    # Create new logger for performance measurement
+    perfLogger = logging.getLogger("movePerf")
+    perfLogger.setLevel(logging.DEBUG)
+
+    Path("./logs").mkdir(exist_ok=True)
+    #file_handler = logging.FileHandler(f"./logs/log_{round(time.time() * 1000)}.log")
+    file_handler = logging.FileHandler(f"./logs/movePerf.log", mode="w")
+    formatter = logging.Formatter('%(asctime)s;%(name)s;%(levelname)s;%(message)s')
+    file_handler.setFormatter(formatter)
+    perfLogger.addHandler(file_handler)
+    perfLogger.propagate = False
+
+    logging.getLogger("movePerf").log(logging.DEBUG, f"Application and Logger initialized")
+
 
     # Apply YAML configuration overrides
     # Note: CLI flags (from Draccus) already applied, YAML merges underneath
