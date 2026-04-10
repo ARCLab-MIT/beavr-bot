@@ -38,18 +38,18 @@ def _get_next_index():
 # Pink Configuration Constants
 # ============================================================================
 # Task costs for FrameTask (end-effector positioning)
-PINK_POSITION_COST = 100.0  # [cost] / [m] - increased to prioritize positioning
-PINK_ORIENTATION_COST = 1.0  # [cost] / [rad] - increased to prioritize orientation
-PINK_LM_DAMPING = 0.1  # Levenberg-Marquardt damping
+PINK_POSITION_COST = 1.0  # [cost] / [m] - aggressive positioning priority
+PINK_ORIENTATION_COST = 1.0  # [cost] / [rad] - low cost to enable orientation tracking
+PINK_LM_DAMPING = 0.01  # Levenberg-Marquardt damping - very low for faster convergence
 
 # Posture task for joint regularization
-PINK_POSTURE_COST = 1e-6  # [cost] / [rad] - reduced to minimize interference with frame task
+PINK_POSTURE_COST = 1e-1  # [cost] / [rad] - reduced to minimize interference with frame task
 
 # IK velocity integration time step
-PINK_IK_DT = 1.1  # seconds - increased for more movement per IK step
+PINK_IK_DT = 0.1  # seconds - smaller steps for stability
 
 # Iterative IK parameters
-PINK_MAX_ITERATIONS = 5  # max IK iterations per call
+PINK_MAX_ITERATIONS = 20  # max IK iterations per call
 PINK_POS_TOLERANCE = 0.01  # position tolerance in meters
 
 # Best-effort joint limits (radians)
@@ -114,10 +114,10 @@ class PinkKinematics:
             # Disable joint limit checking by setting limits to very large values
             if hasattr(self._robot_model, "lowerPositionLimit"):
                 logger.info(f"[PinkKinematics] Original lower limits: {self._robot_model.lowerPositionLimit}")
-                self._robot_model.lowerPositionLimit[:] = -np.pi
+                self._robot_model.lowerPositionLimit[:] = -np.inf
             if hasattr(self._robot_model, "upperPositionLimit"):
                 logger.info(f"[PinkKinematics] Original upper limits: {self._robot_model.upperPositionLimit}")
-                self._robot_model.upperPositionLimit[:] = np.pi
+                self._robot_model.upperPositionLimit[:] = np.inf
 
             logger.info(
                 f"[PinkKinematics] Robot model loaded: nq={self._robot_model.nq}, nv={self._robot_model.nv}, "
@@ -125,7 +125,7 @@ class PinkKinematics:
             )
 
             import pink
-            from pink.tasks import FrameTask, PostureTask
+            from pink.tasks import FrameTask, PostureTask, DampingTask
             import qpsolvers
 
             logger.info(
@@ -192,7 +192,12 @@ class PinkKinematics:
             for i, dof_idx in enumerate(left_joint_dof_indices):
                 logger.info(f"[PinkKinematics]   {i}: '{self.joint_names[i]}' -> idx_q={dof_idx}")
 
-            # Try position-only task to avoid orientation conflicts
+            # Also log what q0 values are at these DOF indices
+            logger.info(f"[PinkKinematics] q0 values at left arm DOF indices:")
+            for i, dof_idx in enumerate(left_joint_dof_indices):
+                logger.info(f"[PinkKinematics]   {i}: idx_q={dof_idx}, q0[{dof_idx}]={self._robot_wrapper.q0[dof_idx]}")
+
+            # Enable both position and orientation tasks with proper quaternion handling
             self._end_effector_task = FrameTask(
                 self.ik_link_name,
                 position_cost=PINK_POSITION_COST,
@@ -200,11 +205,16 @@ class PinkKinematics:
                 lm_damping=PINK_LM_DAMPING,
             )
 
-            # Disable posture task for now to debug tiny velocity issue
-            self._posture_task = None
-            self._tasks = [self._end_effector_task]
+            # Enable posture task for joint regularization
+            self._posture_task = PostureTask(
+                PINK_POSTURE_COST,
+            )
+            self._damping_task = DampingTask(
+                cost=1e-3,  # [cost] / [rad/s]
+            )
+            self._tasks = [self._end_effector_task, self._posture_task, self._damping_task]
 
-            for task in self._tasks:
+            for task in self._tasks[:2]:
                 task.set_target_from_configuration(self._configuration)
             logger.info(
                 f"[PinkKinematics] Tasks initialized: end_effector_task={self._end_effector_task}, posture_task={self._posture_task}"
@@ -271,11 +281,38 @@ class PinkKinematics:
         else:
             logger.warning(f"[Pink IK] Quaternion norm ({norm:.2e}) too small, using identity")
             orientation_quat = np.array([0.0, 0.0, 0.0, 1.0])
-        logger.debug(f"[Pink IK] Normalized quaternion: {orientation_quat}")
+        logger.debug(f"[Pink IK] Input quaternion: {orientation_quat}")
+
+        # Check if quaternion is in (w,x,y,z) format and convert to (x,y,z,w) if needed
+        # scipy expects (x,y,z,w) format, but input might be (w,x,y,z)
+        # For identity rotation, w=1, so check if last element is close to 1
+        if abs(orientation_quat[3]) > 0.5:  # Last element is likely w
+            logger.info(f"[Pink IK] Converting quaternion from (w,x,y,z) to (x,y,z,w) format")
+            # Swap: (w,x,y,z) -> (x,y,z,w)
+            w = orientation_quat[0]
+            x = orientation_quat[1]
+            y = orientation_quat[2]
+            z = orientation_quat[3]
+            orientation_quat = np.array([x, y, z, w])
+            logger.debug(f"[Pink IK] Converted quaternion: {orientation_quat}")
+
+        # Re-normalize after conversion
+        norm = np.linalg.norm(orientation_quat)
+        if norm > 1e-6:
+            orientation_quat = orientation_quat / norm
+        logger.debug(f"[Pink IK] Final normalized quaternion: {orientation_quat}")
 
         r = Rotation.from_quat(orientation_quat)
         rotation_matrix = r.as_matrix()
-        logger.debug(f"[Pink IK] Target rotation matrix:\n{rotation_matrix}")
+
+        # Validate rotation matrix
+        det = np.linalg.det(rotation_matrix)
+        if abs(det - 1.0) > 0.1:
+            logger.warning(
+                f"[Pink IK] Invalid rotation matrix (det={det:.3f}), last element used as w={orientation_quat[3]:.3f}"
+            )
+            rotation_matrix = np.eye(3)
+        logger.debug(f"[Pink IK] Target rotation matrix (det={det:.6f}):\n{rotation_matrix}")
 
         # Update FrameTask target
         target_transform = self._end_effector_task.transform_target_to_world
@@ -297,11 +334,13 @@ class PinkKinematics:
                 position_error = np.array(target_transform.translation) - np.array(current_pose.translation)
                 position_error_norm = np.linalg.norm(position_error)
 
-                logger.info(
-                    f"[Pink IK] Iteration {iteration + 1}/{PINK_MAX_ITERATIONS}: "
-                    f"current={current_pose.translation}, target={target_transform.translation}, "
-                    f"error={position_error_norm:.4f}m"
-                )
+                if iteration % 5 == 0:  # Log every 5 iterations
+                    logger.info(
+                        f"[Pink IK] Iteration {iteration + 1}/{PINK_MAX_ITERATIONS}: "
+                        f"current=({current_pose.translation[0]:.4f},{current_pose.translation[1]:.4f},{current_pose.translation[2]:.4f}), "
+                        f"target=({target_transform.translation[0]:.4f},{target_transform.translation[1]:.4f},{target_transform.translation[2]:.4f}), "
+                        f"error={position_error_norm:.4f}m"
+                    )
 
                 if position_error_norm < PINK_POS_TOLERANCE:
                     logger.info(f"[Pink IK] Converged at iteration {iteration + 1}, error={position_error_norm:.4f}m")
@@ -310,20 +349,33 @@ class PinkKinematics:
                 # Compute velocity
                 velocity = pink.solve_ik(self._configuration, self._tasks, dt, solver=self._solver, safety_break=False)
                 max_velocity = np.max(np.abs(velocity))
-                logger.debug(f"[Pink IK] Velocity solution: {velocity}")
-                logger.debug(f"[Pink IK] Max velocity: {max_velocity:.6f} rad/s")
+
+                # Log velocity details for the first iteration or if velocity is significant
+                if iteration == 0 or max_velocity > 1e-4:
+                    logger.info(f"[Pink IK] Velocity vector (all {len(velocity)} DOF): {velocity}")
+                    logger.info(f"[Pink IK] Max velocity: {max_velocity:.6f} rad/s")
+
+                    # Log what joints are being moved at the left arm DOF indices
+                    if hasattr(self, "_left_joint_dof_indices"):
+                        logger.info(f"[Pink IK] Left arm DOF indices: {self._left_joint_dof_indices}")
+                        for i, dof_idx in enumerate(self._left_joint_dof_indices):
+                            if dof_idx < len(velocity):
+                                vel = velocity[dof_idx]
+                                joint_name = self.joint_names[i]
+                                logger.info(
+                                    f"[Pink IK]   Joint {i} '{joint_name}' (DOF {dof_idx}): velocity={vel:.8f} rad/s"
+                                )
 
                 if max_velocity < 1e-8 and position_error_norm > PINK_POS_TOLERANCE:
                     logger.warning(
                         f"[Pink IK] Velocity too small ({max_velocity:.2e} rad/s) but error is {position_error_norm:.4f}m"
                     )
                     logger.warning(
-                        f"[Pink IK] Possible issues: wrong DOF indices, task costs, or collision constraints"
+                        f"[Pink IK] This suggests wrong DOF indices or task conflicts. Full velocity: {velocity}"
                     )
 
                 # Integrate velocity
                 self._configuration.integrate_inplace(velocity, dt)
-                logger.debug(f"[Pink IK] Configuration after integration: {self._configuration.q}")
 
             # Final position check
             current_pose = self._configuration.get_transform_frame_to_world(self.ik_link_name)
