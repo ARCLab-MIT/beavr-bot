@@ -1,4 +1,5 @@
 import logging
+import re
 import threading
 import time
 from pathlib import Path
@@ -30,6 +31,16 @@ from beavr.teleop.configs.constants import robots
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.ERROR)
+
+
+def _strip_meshes_from_urdf(urdf_path: str) -> str:
+    """Remove all <visual> and <collision> elements from a URDF, keeping only kinematics.
+    This avoids pinocchio spending 20+ seconds loading STL/DAE mesh files."""
+    with open(urdf_path, "r") as f:
+        urdf_text = f.read()
+    urdf_text = re.sub(r"<visual>.*?</visual>", "", urdf_text, flags=re.DOTALL)
+    urdf_text = re.sub(r"<collision>.*?</collision>", "", urdf_text, flags=re.DOTALL)
+    return urdf_text
 
 
 # ============================================================================
@@ -88,13 +99,13 @@ class PinkKinematics:
             if not openarm_path.exists() or not openarm_path.is_dir():
                 openarm_path = Path("/home/ubuntu/workshop-robotics/src/external_dependencies/openarm_description")
 
-            self._robot_wrapper = pin.RobotWrapper.BuildFromURDF(
-                filename=urdf_file,
-                package_dirs=[str(openarm_path)],
+            logger.info(f"[Startup] Loading URDF from {urdf_file}...")
+            stripped_urdf = _strip_meshes_from_urdf(urdf_file)
+            model = pin.buildModelFromXML(stripped_urdf)
                 root_joint=None,
-            )
-            self._robot_model = self._robot_wrapper.model
-            self._robot_data = self._robot_wrapper.data
+            self._robot_model = model
+            self._robot_data = model.createData()
+            self._robot_wrapper = None
 
             # Disable joint limit checking by setting limits to very large values
             if hasattr(self._robot_model, "lowerPositionLimit"):
@@ -103,8 +114,9 @@ class PinkKinematics:
                 self._robot_model.upperPositionLimit[:] = np.inf
 
             # Create Configuration with the full robot model
-            # pink will solve IK for all joints, but we'll extract joints for only one arm later
-            self._configuration = pink.Configuration(self._robot_model, self._robot_data, self._robot_wrapper.q0)
+            # pink will solve IK for all joints, but we'll extract only left arm joints later
+            q0 = pin.neutral(model)
+            self._configuration = pink.Configuration(self._robot_model, self._robot_data, q0)
 
             # Build correct joint mapping: controller joint -> Pink model DOF index (idx_q)
             # Map each joint from joint_names to its Pinocchio configuration index (idx_q)
@@ -581,7 +593,6 @@ class OpenArmPinkRobot(RobotWrapper):
         if joint_positions is None:
             return None
 
-        # Compute FK directly (synchronous) - no caching
         h_matrix = self._kinematics.compute_fk(joint_positions)
         if h_matrix is not None:
             elapsed_total = time.perf_counter() - start
@@ -603,7 +614,6 @@ class OpenArmPinkRobot(RobotWrapper):
             #logger.warning(f"[Timing] get_cartesian_position op_id={op_id} result=None (no_positions)")
             return None
 
-        # Compute FK directly (synchronous) - no caching
         result = self._kinematics.compute_fk(joint_positions)
         return result
 
