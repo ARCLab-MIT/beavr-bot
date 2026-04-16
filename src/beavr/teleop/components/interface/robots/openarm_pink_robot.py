@@ -72,6 +72,8 @@ class PinkKinematics:
         # Use direct URDF loading instead
         self._load_robot_from_urdf(urdf_path=urdf_path)
 
+        self._frame_id = 0
+
     def _load_robot_from_urdf(self, urdf_path=None):
 
         try:
@@ -80,14 +82,14 @@ class PinkKinematics:
             # Resolve package path
             urdf_path_obj = Path(urdf_file)
             openarm_path = urdf_path_obj.parent.parent.parent.parent
-            openarm_path = openarm_path.parent  # Go up one more level to get the openarm_description root
+            #openarm_path = openarm_path.parent  # Go up one more level to get the openarm_description root
 
             if not openarm_path.exists() or not openarm_path.is_dir():
                 openarm_path = Path("/home/ubuntu/workshop-robotics/src/external_dependencies/openarm_description")
 
             self._robot_wrapper = pin.RobotWrapper.BuildFromURDF(
                 filename=urdf_file,
-                package_dirs=[str(urdf_path_obj.parent)],
+                package_dirs=[str(openarm_path)],
                 root_joint=None,
             )
             self._robot_model = self._robot_wrapper.model
@@ -169,6 +171,8 @@ class PinkKinematics:
 
         start_time = time.perf_counter()
 
+        logging.getLogger("movePerf").log(logging.DEBUG, f"Compute IK for frame {self._frame_id}")
+
         # Update configuration from seed if provided
         if seed_state is not None:
             # Map seed_state (7 DOF) to full configuration (18 DOF)
@@ -241,8 +245,13 @@ class PinkKinematics:
         try:
             logger.debug(f"[Pink IK] Starting iterative IK with max iterations={PINK_MAX_ITERATIONS}")
 
+            position_error_norm_old = None
+            configuration_q_old = None
+
             # Iterative IK loop
             for iteration in range(PINK_MAX_ITERATIONS):
+                start_time_iter = time.perf_counter()
+
                 # Get current pose and check convergence
                 current_pose = self._configuration.get_transform_frame_to_world(self.ik_link_name)
                 position_error = np.array(target_transform.translation) - np.array(current_pose.translation)
@@ -256,7 +265,21 @@ class PinkKinematics:
                         f"error={position_error_norm:.4f}m"
                     )
 
-                if position_error_norm < PINK_POS_TOLERANCE:
+                # Starting with the second iteration, check for convergence based on error change
+                if position_error_norm_old is not None and configuration_q_old is not None:
+                    # Break if the error does not change by more than 1mm (0.001m)
+                    if abs(position_error_norm - position_error_norm_old) < 0.001:
+                        logging.getLogger("movePerf").log(logging.DEBUG, f"Converged because of no significant error change ({abs(position_error_norm - position_error_norm_old)})")
+                        break
+
+                    # If error incresed, use previous configuration and break
+                    if position_error_norm_old < position_error_norm:
+                        logging.getLogger("movePerf").log(logging.DEBUG, f"Converged because of increasing error ({position_error_norm:.4f}). Using previous configuration")
+                        self._configuration.update(configuration_q_old)
+                        break
+
+
+                if position_error_norm < PINK_POS_TOLERANCE: 
                     logger.info(f"[Pink IK] Converged at iteration {iteration + 1}, error={position_error_norm:.4f}m")
                     break
 
@@ -288,6 +311,15 @@ class PinkKinematics:
                         f"[Pink IK] This suggests wrong DOF indices or task conflicts. Full velocity: {velocity}"
                     )
 
+                elapsed_iter = time.perf_counter() - start_time_iter
+                if position_error_norm_old is not None:
+                    logging.getLogger("movePerf").log(logging.DEBUG, f"    Iteration {iteration + 1} completed in {elapsed_iter * 1000:.2f}ms - Error is {position_error_norm:.4f}m - Error change: {abs(position_error_norm - position_error_norm_old):.4f}m")
+                else: 
+                    logging.getLogger("movePerf").log(logging.DEBUG, f"    Iteration {iteration + 1} completed in {elapsed_iter * 1000:.2f}ms - Error is {position_error_norm:.4f}m")
+
+                configuration_q_old = self._configuration.q.copy() # todo here and use the old config? maybe copy it before the intergrate_inplace??
+                position_error_norm_old = position_error_norm
+
                 # Integrate velocity
                 self._configuration.integrate_inplace(velocity, dt)
 
@@ -314,7 +346,12 @@ class PinkKinematics:
             logger.info(
                 f"[Pink IK] SUCCESS: computed {len(joint_angles)} joint angles in {elapsed * 1000:.2f}ms: {joint_angles}"
             )
-            logger.debug(f"[Pink IK] Full configuration after IK: {full_joint_angles}")
+
+            logging.getLogger("movePerf").log(logging.DEBUG, f"Computed IK;Frame {self._frame_id}; Time {elapsed * 1000:.2f}ms; Final Error {final_error_norm:.4f}m")
+
+            self._frame_id += 1
+            #if self._frame_id == 200:
+            #    exit(0)
 
             return joint_angles.tolist()
 
