@@ -66,9 +66,9 @@ class BaseSubscriber(threading.Thread, ABC, Generic[T]):
             self._socket = self._context.socket(socket_type)
 
             # Configure socket for real-time control
-            self._socket.setsockopt(zmq.RCVHWM, 5)  # Keep last 5 messages
+            self._socket.setsockopt(zmq.RCVHWM, 1)  # Only keep last message
             self._socket.setsockopt(zmq.LINGER, 0)  # Don't wait on close
-            self._socket.setsockopt(zmq.RCVTIMEO, 50)  # 50ms timeout on receive
+            self._socket.setsockopt(zmq.RCVTIMEO, 10)  # 10ms timeout on receive
 
             # Enable message conflation for non-SUB sockets
             if socket_type != zmq.SUB:
@@ -127,7 +127,7 @@ class BaseSubscriber(threading.Thread, ABC, Generic[T]):
                         break
 
                     # Poll with timeout to check _running periodically
-                    events = dict(self._poller.poll(100))  # 100ms timeout
+                    events = dict(self._poller.poll(10))  # 10ms timeout
 
                     if self._socket in events:
                         try:

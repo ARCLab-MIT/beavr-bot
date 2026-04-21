@@ -17,7 +17,7 @@ from beavr.teleop.components.operator.operator_types import GripperCommand
 from beavr.teleop.configs.constants import robots
 
 logger = logging.getLogger(__name__)
-
+logger.setLevel(logging.ERROR)
 
 class OpenArmGripperController:
     """ROS2 gripper controller that receives commands via ZMQ and sends to ROS2 gripper action server."""
@@ -81,7 +81,7 @@ class OpenArmGripperController:
     def send_gripper_command(self, command: GripperCommand) -> bool:
         """Send gripper command to ROS2 gripper action server."""
         if not self._action_client.server_is_ready():
-            logger.error("Gripper action server is not ready")
+            logger.debug("Gripper action server is not ready")
             return False
 
         # Clamp width to gripper limits

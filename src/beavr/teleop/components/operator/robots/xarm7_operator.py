@@ -28,7 +28,7 @@ from beavr.teleop.components.operator.operator_types import CartesianTarget, Gri
 from beavr.teleop.configs.constants import robots
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.ERROR) #.DEBUG)
 
 
 class XArmOperator(Operator):
@@ -188,7 +188,7 @@ class XArmOperator(Operator):
         self.mock_hand_frame_index: int = 0
 
         # Set default mock frames: continuous movement from y=0 to y=0.3 over 100 frames
-        self._generate_default_mock_frames()
+        #self._generate_default_mock_frames()
 
 
         # Filter setup
@@ -214,7 +214,7 @@ class XArmOperator(Operator):
 
         self.logging_config = {"enabled": True, "filename": "openarm"}
 
-        self.logging_enabled = self.logging_config.get("enabled", False)
+        self.logging_enabled = False #self.logging_config.get("enabled", False)
         self.pose_logger: Optional[PoseLogger] = None
 
         if self.logging_enabled:

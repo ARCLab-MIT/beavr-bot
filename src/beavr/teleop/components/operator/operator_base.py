@@ -1,6 +1,9 @@
+import time
 import logging
+from collections import deque
 from abc import ABC, abstractmethod
 
+import numpy as np
 from beavr.teleop.common.network.utils import cleanup_zmq_resources
 from beavr.teleop.components import Component
 
@@ -73,22 +76,41 @@ class Operator(Component, ABC):
             self.notify_component_start("{} control".format(self.robot))
             logger.info("Start controlling the robot hand using the Oculus Headset.\n")
 
+            frame_count = 0
+            target_interval = 1.0 / 30.0 
+            self._start_time = time.time()
+            iter_times = deque(maxlen=1000)
+
             while True:
+                start_time_iter = time.perf_counter()
                 try:
                     if self.return_real() is True:
                         if self.robot.get_joint_position() is not None:
-                            self.timer.start_loop()
                             self._apply_retargeted_angles()
-                            self.timer.end_loop()
                     else:
-                        self.timer.start_loop()
                         self._apply_retargeted_angles()
-                        self.timer.end_loop()
 
                 except KeyboardInterrupt:
                     break
                 except Exception as e:
                     logger.error(f"Error in operator loop: {e}")
                     break
+
+                frame_count += 1
+
+                behind = np.sum(iter_times) - len(iter_times)*target_interval
+                sleep_time = min(target_interval, target_interval - behind) # Sleep at most 33ms or less if behind
+
+                if sleep_time > 0:
+                    time.sleep(sleep_time)
+
+                elapsed_iter = time.perf_counter() - start_time_iter
+
+                # At the first iteration, the loop has to wait at get_hand_frame, so we use the target interval as default here
+                if frame_count == 1:
+                    iter_times.append(target_interval)
+                else:
+                    iter_times.append(elapsed_iter)
+
         finally:
             self.cleanup()

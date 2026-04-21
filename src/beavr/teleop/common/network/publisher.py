@@ -44,7 +44,8 @@ class BasePublisher:
         """Initialize the socket using provided or global context."""
         try:
             self._socket = self._context.socket(socket_type)
-            self._socket.setsockopt(zmq.SNDHWM, 1)  # Only keep latest message
+            self._socket.setsockopt(zmq.SNDHWM, 10)  # Keep last 10 messages
+            self._socket.setsockopt(zmq.LINGER, 0)  # Don't block on close
             addr = f"tcp://*:{self._port}"
             self._socket.bind(addr)
         except zmq.ZMQError as e:
@@ -75,7 +76,7 @@ class PublisherThread(threading.Thread):
         self._context = context or get_global_context()
         self._socket = None
         self._running = True
-        self._queue = queue.Queue(maxsize=100)  # Limit queue size to prevent memory issues
+        self._queue = queue.Queue(maxsize=30)  # Limit queue size to prevent memory issues
         self._started = threading.Event()
 
     def send(self, topic: str, data: Any) -> None:
@@ -122,7 +123,7 @@ class PublisherThread(threading.Thread):
         try:
             # Create socket in the worker thread
             self._socket = self._context.socket(zmq.PUB)
-            self._socket.setsockopt(zmq.SNDHWM, 1)  # Only keep latest message
+            self._socket.setsockopt(zmq.SNDHWM, 10)  # Keep last 10 messages
             addr = f"tcp://*:{self._port}"
             self._socket.bind(addr)
 

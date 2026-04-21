@@ -243,6 +243,56 @@ def main(cfg: MainConfig):
     perfLogger.addHandler(file_handler)
     perfLogger.propagate = False
 
+    # Create new logger for logging zqm
+    zqmLogger = logging.getLogger("zqmLogger")
+    zqmLogger.setLevel(logging.DEBUG)
+
+    Path("./logs").mkdir(exist_ok=True)
+    #file_handler = logging.FileHandler(f"./logs/log_{round(time.time() * 1000)}.log")
+    file_handler = logging.FileHandler(f"./logs/zqmLog.log", mode="w")
+    formatter = logging.Formatter('%(asctime)s;%(name)s;%(levelname)s;%(message)s')
+    file_handler.setFormatter(formatter)
+    zqmLogger.addHandler(file_handler)
+    zqmLogger.propagate = False
+
+    # Create new logger for logging zqm2
+    zqm2Logger = logging.getLogger("zqm2Logger")
+    zqm2Logger.setLevel(logging.DEBUG)
+
+    Path("./logs").mkdir(exist_ok=True)
+    #file_handler = logging.FileHandler(f"./logs/log_{round(time.time() * 1000)}.log")
+    file_handler = logging.FileHandler(f"./logs/zqm2Log.log", mode="w")
+    formatter = logging.Formatter('%(asctime)s;%(name)s;%(levelname)s;%(message)s')
+    file_handler.setFormatter(formatter)
+    zqm2Logger.addHandler(file_handler)
+    zqm2Logger.propagate = False
+
+    # Create new logger for logging oculus
+    oculusLogger = logging.getLogger("oculusLogger")
+    oculusLogger.setLevel(logging.DEBUG)
+
+    Path("./logs").mkdir(exist_ok=True)
+    #file_handler = logging.FileHandler(f"./logs/log_{round(time.time() * 1000)}.log")
+    file_handler = logging.FileHandler(f"./logs/oculusLogger.log", mode="w")
+    formatter = logging.Formatter('%(asctime)s;%(name)s;%(levelname)s;%(message)s')
+    file_handler.setFormatter(formatter)
+    oculusLogger.addHandler(file_handler)
+    oculusLogger.propagate = False
+
+    # Create new logger for logging xarm7
+    xarmLogger = logging.getLogger("xarmLogger")
+    xarmLogger.setLevel(logging.DEBUG)
+
+    Path("./logs").mkdir(exist_ok=True)
+    #file_handler = logging.FileHandler(f"./logs/log_{round(time.time() * 1000)}.log")
+    file_handler = logging.FileHandler(f"./logs/xarmLogger.log", mode="w")
+    formatter = logging.Formatter('%(asctime)s;%(name)s;%(levelname)s;%(message)s')
+    file_handler.setFormatter(formatter)
+    xarmLogger.addHandler(file_handler)
+    xarmLogger.propagate = False
+
+
+
     logging.getLogger("movePerf").log(logging.DEBUG, f"Application and Logger initialized")
 
 

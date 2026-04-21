@@ -2,6 +2,7 @@ import logging
 import threading
 import time
 from pathlib import Path
+from collections import deque
 from typing import List, Optional, Tuple
 
 import numpy as np
@@ -27,7 +28,7 @@ from beavr.teleop.components.operator.operator_types import CartesianTarget
 from beavr.teleop.configs.constants import robots
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.ERROR) #logging.DEBUG)
 
 
 # ============================================================================
@@ -269,12 +270,12 @@ class PinkKinematics:
                 if position_error_norm_old is not None and configuration_q_old is not None:
                     # Break if the error does not change by more than 1mm (0.001m)
                     if abs(position_error_norm - position_error_norm_old) < 0.001:
-                        logging.getLogger("movePerf").log(logging.DEBUG, f"Converged because of no significant error change ({abs(position_error_norm - position_error_norm_old)})")
+                        #logging.getLogger("movePerf").log(logging.DEBUG, f"Converged because of no significant error change ({abs(position_error_norm - position_error_norm_old)})")
                         break
 
                     # If error incresed, use previous configuration and break
                     if position_error_norm_old < position_error_norm:
-                        logging.getLogger("movePerf").log(logging.DEBUG, f"Converged because of increasing error ({position_error_norm:.4f}). Using previous configuration")
+                        #logging.getLogger("movePerf").log(logging.DEBUG, f"Converged because of increasing error ({position_error_norm:.4f}). Using previous configuration")
                         self._configuration.update(configuration_q_old)
                         break
 
@@ -312,10 +313,10 @@ class PinkKinematics:
                     )
 
                 elapsed_iter = time.perf_counter() - start_time_iter
-                if position_error_norm_old is not None:
-                    logging.getLogger("movePerf").log(logging.DEBUG, f"    Iteration {iteration + 1} completed in {elapsed_iter * 1000:.2f}ms - Error is {position_error_norm:.4f}m - Error change: {abs(position_error_norm - position_error_norm_old):.4f}m")
-                else: 
-                    logging.getLogger("movePerf").log(logging.DEBUG, f"    Iteration {iteration + 1} completed in {elapsed_iter * 1000:.2f}ms - Error is {position_error_norm:.4f}m")
+                #if position_error_norm_old is not None:
+                #    logging.getLogger("movePerf").log(logging.DEBUG, f"    Iteration {iteration + 1} completed in {elapsed_iter * 1000:.2f}ms - Error is {position_error_norm:.4f}m - Error change: {abs(position_error_norm - position_error_norm_old):.4f}m")
+                #else: 
+                #    logging.getLogger("movePerf").log(logging.DEBUG, f"    Iteration {iteration + 1} completed in {elapsed_iter * 1000:.2f}ms - Error is {position_error_norm:.4f}m")
 
                 configuration_q_old = self._configuration.q.copy() # todo here and use the old config? maybe copy it before the intergrate_inplace??
                 position_error_norm_old = position_error_norm
@@ -740,9 +741,11 @@ class OpenArmPinkRobot(RobotWrapper):
         next_frame_time = time.time()
         frame_count = 0
         self._start_time = time.time()
+        iter_times = deque(maxlen=1000)
 
         while True:
             current_time = time.time()
+            start_time_iter = time.perf_counter()
 
             self._history_index = frame_count % 1000
 
@@ -757,98 +760,106 @@ class OpenArmPinkRobot(RobotWrapper):
 
             self._last_frame_time = current_time
 
-            if current_time >= next_frame_time:
-                next_frame_time = current_time + target_interval
+            next_frame_time = current_time + target_interval
 
-                home_signaled = self.check_home()
+            home_signaled = self.check_home()
 
-                if home_signaled and not self._is_homed:
-                    self.home()
-                    joint_angles = np.array(robots.OPENARM_HOME_JS)
-                    with self._joint_angles_lock:
-                        self._latest_joint_angles = joint_angles
-                    self._is_homed = True
-                    self.send_robot_pose()
+            if home_signaled and not self._is_homed:
+                self.home()
+                joint_angles = np.array(robots.OPENARM_HOME_JS)
+                with self._joint_angles_lock:
+                    self._latest_joint_angles = joint_angles
+                self._is_homed = True
+                self.send_robot_pose()
 
-                elif not home_signaled and self._is_homed:
-                    self._is_homed = False
+            elif not home_signaled and self._is_homed:
+                self._is_homed = False
 
-                reset_signaled = self.check_reset()
+            reset_signaled = self.check_reset()
 
-                if reset_signaled:
-                    self.send_robot_pose()
+            if reset_signaled:
+                self.send_robot_pose()
 
-                teleop_state = self.get_teleop_state()
+            teleop_state = self.get_teleop_state()
 
-                if teleop_state == robots.ARM_TELEOP_STOP:
-                    continue
+            if teleop_state == robots.ARM_TELEOP_STOP:
+                continue
 
-                msg = self._cartesian_coords_subscriber.recv_keypoints()
+            msg = self._cartesian_coords_subscriber.recv_keypoints()
 
-                cmd = msg
-                if cmd is not None:
-                    logger.debug(
-                        f"[ROBOT] Received cartesian command: pos={cmd.position_m}, orient={cmd.orientation_xyzw}"
-                    )
-                    new_cartesian_position = np.concatenate(
-                        [
-                            np.asarray(cmd.position_m, dtype=np.float32),
-                            np.asarray(cmd.orientation_xyzw, dtype=np.float32),
-                        ]
-                    )
-                    new_cartesian_timestamp = cmd.timestamp_s
+            logging.getLogger("zqm2Logger").log(logging.DEBUG, f"recvEEcmd;{msg}")
 
-                    position_changed = self._cartesian_positions_close(
-                        new_cartesian_position, self._latest_commanded_cartesian_position
-                    )
+            cmd = msg
+            if cmd is not None:
+                logger.debug(
+                    f"[ROBOT] Received cartesian command: pos={cmd.position_m}, orient={cmd.orientation_xyzw}"
+                )
+                new_cartesian_position = np.concatenate(
+                    [
+                        np.asarray(cmd.position_m, dtype=np.float32),
+                        np.asarray(cmd.orientation_xyzw, dtype=np.float32),
+                    ]
+                )
+                new_cartesian_timestamp = cmd.timestamp_s
 
-                    position_changed = False
-                    if self._latest_commanded_cartesian_position is None or not position_changed:
-                        logger.debug("[ROBOT] Cartesian position changed, computing IK")
-                        position = new_cartesian_position[:3]
-                        orientation = new_cartesian_position[3:7]
+                position_changed = self._cartesian_positions_close(
+                    new_cartesian_position, self._latest_commanded_cartesian_position
+                )
 
-                        target_pos = new_cartesian_position.copy()
-                        target_time = new_cartesian_timestamp
+                position_changed = False
+                if self._latest_commanded_cartesian_position is None or not position_changed:
+                    logger.debug("[ROBOT] Cartesian position changed, computing IK")
+                    position = new_cartesian_position[:3]
+                    orientation = new_cartesian_position[3:7]
 
-                        # Get current joint positions as seed for IK
-                        seed_joints = self._controller.get_arm_position()
+                    target_pos = new_cartesian_position.copy()
+                    target_time = new_cartesian_timestamp
 
-                        # Synchronous IK call with seed state (if available)
-                        joint_angles = self._kinematics.compute_ik(position, orientation, seed_state=seed_joints)
+                    # Get current joint positions as seed for IK
+                    seed_joints = self._controller.get_arm_position()
 
-                        if joint_angles is not None:
-                            self._ik_completed_history[self._history_index] = True
-                            completion_time = time.time()
-                            self._ik_complete_timestamps.append(
-                                completion_time - self._start_time if self._start_time else completion_time
-                            )
+                    # Synchronous IK call with seed state (if available)
+                    joint_angles = self._kinematics.compute_ik(position, orientation, seed_state=seed_joints)
 
-                            # Update joint angles
-                            with self._joint_angles_lock:
-                                self._latest_joint_angles = joint_angles
-                                self._latest_commanded_cartesian_position = target_pos
-                                self._latest_commanded_cartesian_timestamp = target_time
+                    if joint_angles is not None:
+                        self._ik_completed_history[self._history_index] = True
+                        completion_time = time.time()
+                        self._ik_complete_timestamps.append(
+                            completion_time - self._start_time if self._start_time else completion_time
+                        )
 
-                            logger.debug(f"[ROBOT] IK completed: {joint_angles}")
-                        else:
-                            logger.warning("[ROBOT] IK returned None, keeping previous joint angles")
+                        # Update joint angles
+                        with self._joint_angles_lock:
+                            self._latest_joint_angles = joint_angles
+                            self._latest_commanded_cartesian_position = target_pos
+                            self._latest_commanded_cartesian_timestamp = target_time
+
+                        logger.debug(f"[ROBOT] IK completed: {joint_angles}")
                     else:
-                        logger.debug("[ROBOT] Cartesian position unchanged, using cached joint angles")
+                        logger.warning("[ROBOT] IK returned None, keeping previous joint angles")
                 else:
-                    logger.debug("[ROBOT] No cartesian command received")
+                    logger.debug("[ROBOT] Cartesian position unchanged, using cached joint angles")
+            else:
+                logger.debug("[ROBOT] No cartesian command received")
 
-                if self._latest_joint_angles is not None:
-                    logger.debug(f"[ROBOT] Sending joint angles to controller: {self._latest_joint_angles}")
-                    self._send_joint_trajectory(self._latest_joint_angles)
-                else:
-                    logger.debug("[ROBOT] No joint angles available to send")
-                self.publish_current_state()
-                sleep_time = max(0, next_frame_time - time.time())
-                if sleep_time > 0:
-                    time.sleep(sleep_time)
+            if self._latest_joint_angles is not None:
+                logger.debug(f"[ROBOT] Sending joint angles to controller: {self._latest_joint_angles}")
+                self._send_joint_trajectory(self._latest_joint_angles)
+            else:
+                logger.debug("[ROBOT] No joint angles available to send")
 
-                frame_count += 1
+            frame_count += 1
+
+            self.publish_current_state()
+
+            behind = np.sum(iter_times) - len(iter_times)*target_interval
+            sleep_time = min(target_interval, target_interval - behind) # Sleep at most 33ms or less if behind
+
+            if sleep_time > 0:
+                time.sleep(sleep_time)
+
+            elapsed_iter = time.perf_counter() - start_time_iter
+            iter_times.append(elapsed_iter)
 
     def publish_current_state(self):
 
