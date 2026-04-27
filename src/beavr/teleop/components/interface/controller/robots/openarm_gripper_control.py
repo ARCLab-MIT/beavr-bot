@@ -24,7 +24,7 @@ class OpenArmGripperController:
 
     def __init__(
         self,
-        gripper_action_name: str = "/left_gripper_controller/gripper_cmd",
+        gripper_action_name: str = "/openarm_left_gripper_controller/gripper_cmd",
         max_width: float = None,
         min_width: float = None,
         default_speed: float = None,

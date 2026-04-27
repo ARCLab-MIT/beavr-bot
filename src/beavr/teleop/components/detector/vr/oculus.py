@@ -460,8 +460,6 @@ class OculusVRHandDetector(Component):
                         # Log raw VR data for debugging (both original and rotated)
                         self._log_raw_vr_data(hand_side, keypoint_data, keypoints, rotated_keypoints)
 
-                        logging.getLogger("movePerf").log(logging.DEBUG, f"Oculus Keypoints received ({len(keypoints)}) on topic {hand_side}")
-
                         # Create input frame
                         input_frame = InputFrame(
                             timestamp_s=time.time(),

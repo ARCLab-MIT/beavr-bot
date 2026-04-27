@@ -35,7 +35,7 @@ logger.setLevel(logging.ERROR) #logging.DEBUG)
 # Pink Configuration Constants
 # ============================================================================
 # Task costs for FrameTask (end-effector positioning)
-PINK_POSITION_COST = 1.0  # [cost] / [m] - aggressive positioning priority
+PINK_POSITION_COST = 0.5  # [cost] / [m] - aggressive positioning priority
 PINK_ORIENTATION_COST = 1.0  # [cost] / [rad] - low cost to enable orientation tracking
 PINK_LM_DAMPING = 0.01  # Levenberg-Marquardt damping - very low for faster convergence
 
@@ -43,7 +43,7 @@ PINK_LM_DAMPING = 0.01  # Levenberg-Marquardt damping - very low for faster conv
 PINK_POSTURE_COST = 1e-1  # [cost] / [rad] - reduced to minimize interference with frame task
 
 # IK velocity integration time step
-PINK_IK_DT = 0.1  # seconds - smaller steps for stability
+PINK_IK_DT = 0.01  # seconds - smaller steps for stability
 
 # Iterative IK parameters
 PINK_MAX_ITERATIONS = 20  # max IK iterations per call
@@ -172,7 +172,6 @@ class PinkKinematics:
 
         start_time = time.perf_counter()
 
-        logging.getLogger("movePerf").log(logging.DEBUG, f"Compute IK for frame {self._frame_id}")
 
         # Update configuration from seed if provided
         if seed_state is not None:
@@ -192,36 +191,8 @@ class PinkKinematics:
         else:
             logger.debug(f"[Pink IK] No seed state provided, using current config")
 
-        # Create target transform from position + quaternion
-        # Normalize quaternion to ensure unit quaternion
-        orientation_quat = np.array(orientation_quat)
-        norm = np.linalg.norm(orientation_quat)
-        if norm > 1e-6:
-            orientation_quat = orientation_quat / norm
-        else:
-            logger.warning(f"[Pink IK] Quaternion norm ({norm:.2e}) too small, using identity")
-            orientation_quat = np.array([0.0, 0.0, 0.0, 1.0])
-
-        # Check if quaternion is in (w,x,y,z) format and convert to (x,y,z,w) if needed
-        # scipy expects (x,y,z,w) format, but input might be (w,x,y,z)
-        # For identity rotation, w=1, so check if last element is close to 1
-        if abs(orientation_quat[3]) > 0.5:  # Last element is likely w
-            logger.info(f"[Pink IK] Converting quaternion from (w,x,y,z) to (x,y,z,w) format")
-            # Swap: (w,x,y,z) -> (x,y,z,w)
-            w = orientation_quat[0]
-            x = orientation_quat[1]
-            y = orientation_quat[2]
-            z = orientation_quat[3]
-            orientation_quat = np.array([x, y, z, w])
-            logger.debug(f"[Pink IK] Converted quaternion: {orientation_quat}")
-
-        # Re-normalize after conversion
-        norm = np.linalg.norm(orientation_quat)
-        if norm > 1e-6:
-            orientation_quat = orientation_quat / norm
-        logger.debug(f"[Pink IK] Final normalized quaternion: {orientation_quat}")
-
-        r = Rotation.from_quat(orientation_quat)
+        # Usually, scalar-last order (x, y, z, w) - https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.transform.Rotation.from_quat.html
+        r = Rotation.from_quat(orientation_quat, scalar_first=True)
         rotation_matrix = r.as_matrix()
 
         # Validate rotation matrix
@@ -235,6 +206,18 @@ class PinkKinematics:
 
         # Update FrameTask target
         target_transform = self._end_effector_task.transform_target_to_world
+
+        delta_rot = [
+            [1.0,  0.0,  0.0],
+            [0.0, -1.0,  0.0],
+            [0.0,  0.0, -1.0]
+        ]
+        pivot = np.array([0.00000000, 0.15349774, 0.08189955])
+
+        position[2] = ((position[2] - pivot[2]) * (-1)) + pivot[2] # Invert Z with respect to starting position
+        position = Rotation.from_euler('z', -90, degrees=True).apply(position - pivot) + pivot 
+        rotation_matrix = delta_rot @ rotation_matrix
+
         target_transform.translation[:] = position
         target_transform.rotation[:] = rotation_matrix
         logger.debug(f"[Pink IK] Target transform updated")
@@ -267,22 +250,22 @@ class PinkKinematics:
                     )
 
                 # Starting with the second iteration, check for convergence based on error change
-                if position_error_norm_old is not None and configuration_q_old is not None:
-                    # Break if the error does not change by more than 1mm (0.001m)
-                    if abs(position_error_norm - position_error_norm_old) < 0.001:
-                        #logging.getLogger("movePerf").log(logging.DEBUG, f"Converged because of no significant error change ({abs(position_error_norm - position_error_norm_old)})")
-                        break
+                #if position_error_norm_old is not None and configuration_q_old is not None:
+                #    # Break if the error does not change by more than 1mm (0.001m)
+                #    if abs(position_error_norm - position_error_norm_old) < 0.001:
+                #        #logging.getLogger("movePerf").log(logging.DEBUG, f"Converged because of no significant error change ({abs(position_error_norm - position_error_norm_old)})")
+                #        break
 
-                    # If error incresed, use previous configuration and break
-                    if position_error_norm_old < position_error_norm:
-                        #logging.getLogger("movePerf").log(logging.DEBUG, f"Converged because of increasing error ({position_error_norm:.4f}). Using previous configuration")
-                        self._configuration.update(configuration_q_old)
-                        break
+                #    # If error incresed, use previous configuration and break
+                #    if position_error_norm_old < position_error_norm:
+                #        #logging.getLogger("movePerf").log(logging.DEBUG, f"Converged because of increasing error ({position_error_norm:.4f}). Using previous configuration")
+                #        self._configuration.update(configuration_q_old)
+                #        break
 
 
-                if position_error_norm < PINK_POS_TOLERANCE: 
-                    logger.info(f"[Pink IK] Converged at iteration {iteration + 1}, error={position_error_norm:.4f}m")
-                    break
+                #if position_error_norm < PINK_POS_TOLERANCE: 
+                #    logger.info(f"[Pink IK] Converged at iteration {iteration + 1}, error={position_error_norm:.4f}m")
+                #    break
 
                 # Compute velocity
                 velocity = pink.solve_ik(self._configuration, self._tasks, dt, solver=self._solver, safety_break=False)
@@ -313,11 +296,6 @@ class PinkKinematics:
                     )
 
                 elapsed_iter = time.perf_counter() - start_time_iter
-                #if position_error_norm_old is not None:
-                #    logging.getLogger("movePerf").log(logging.DEBUG, f"    Iteration {iteration + 1} completed in {elapsed_iter * 1000:.2f}ms - Error is {position_error_norm:.4f}m - Error change: {abs(position_error_norm - position_error_norm_old):.4f}m")
-                #else: 
-                #    logging.getLogger("movePerf").log(logging.DEBUG, f"    Iteration {iteration + 1} completed in {elapsed_iter * 1000:.2f}ms - Error is {position_error_norm:.4f}m")
-
                 configuration_q_old = self._configuration.q.copy() # todo here and use the old config? maybe copy it before the intergrate_inplace??
                 position_error_norm_old = position_error_norm
 
@@ -348,11 +326,7 @@ class PinkKinematics:
                 f"[Pink IK] SUCCESS: computed {len(joint_angles)} joint angles in {elapsed * 1000:.2f}ms: {joint_angles}"
             )
 
-            logging.getLogger("movePerf").log(logging.DEBUG, f"Computed IK;Frame {self._frame_id}; Time {elapsed * 1000:.2f}ms; Final Error {final_error_norm:.4f}m")
-
             self._frame_id += 1
-            #if self._frame_id == 200:
-            #    exit(0)
 
             return joint_angles.tolist()
 
@@ -602,10 +576,10 @@ class OpenArmPinkRobot(RobotWrapper):
         h_matrix = self._kinematics.compute_fk(joint_positions)
         if h_matrix is not None:
             elapsed_total = time.perf_counter() - start
-            logger.debug(f"[Timing] get_cartesian_state op_id={op_id} total={elapsed_total * 1000:.2f}ms")
+            #logger.debug(f"[Timing] get_cartesian_state op_id={op_id} total={elapsed_total * 1000:.2f}ms")
             return {"cartesian_position": h_matrix, "timestamp": time.time()}
         else:
-            logger.warning(f"[Timing] get_cartesian_state op_id={op_id} FK returned None")
+            #logger.warning(f"[Timing] get_cartesian_state op_id={op_id} FK returned None")
             return None
 
     def get_joint_position(self):
@@ -617,7 +591,7 @@ class OpenArmPinkRobot(RobotWrapper):
     def get_cartesian_position(self):
         joint_positions = self._controller.get_arm_position()
         if joint_positions is None:
-            logger.warning(f"[Timing] get_cartesian_position op_id={op_id} result=None (no_positions)")
+            #logger.warning(f"[Timing] get_cartesian_position op_id={op_id} result=None (no_positions)")
             return None
 
         # Compute FK directly (synchronous) - no caching
@@ -786,8 +760,6 @@ class OpenArmPinkRobot(RobotWrapper):
                 continue
 
             msg = self._cartesian_coords_subscriber.recv_keypoints()
-
-            logging.getLogger("zqm2Logger").log(logging.DEBUG, f"recvEEcmd;{msg}")
 
             cmd = msg
             if cmd is not None:

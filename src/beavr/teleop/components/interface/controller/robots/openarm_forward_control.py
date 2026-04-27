@@ -135,8 +135,6 @@ class OpenArmForwardController:
     def move_arm_joint(self, joint_angles: np.ndarray, duration: Optional[float] = None) -> bool:
         """Publish joint position commands to topic with max_delta limit per step"""
 
-        logging.getLogger("oculusLogger").log(logging.DEBUG, f"move_arm_joint;{joint_angles};{duration}")
-
         if len(joint_angles) != self.num_joints:
             logger.error(f"Expected {self.num_joints} joint angles, got {len(joint_angles)}")
             return False

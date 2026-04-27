@@ -741,7 +741,27 @@ class XArmOperator(Operator):
         # Use solve for potentially better numerical stability than inv
         try:
             h_hi_hh_inv = np.linalg.inv(self.hand_init_h)  # Inverse of initial hand pose
-            h_ht_hi = h_hi_hh_inv @ self.hand_moving_h  # Relative motion of hand w.r.t its start pose
+            h_ht_hi = h_hi_hh_inv @ self.hand_moving_h  # Relative motion of hand w.r.t its start pos
+
+            t_init = self.hand_init_h[:3, 3]
+            t_cur = self.hand_moving_h[:3, 3]
+            dt_world = t_cur - t_init
+
+            R_init = self.hand_init_h[:3, :3]
+            R_cur = self.hand_moving_h[:3, :3]
+            R_rel_world = R_cur @ R_init.T
+
+            rot = Rotation.from_matrix(R_rel_world)
+            yaw, pitch, roll = rot.as_euler('zyx', degrees=False)
+
+            yaw = -yaw
+
+            R_rel_fixed = Rotation.from_euler('zyx', [yaw, pitch, roll], degrees=False).as_matrix()
+
+            h_ht_hi = np.eye(4)
+            h_ht_hi[:3, :3] = R_rel_fixed
+            h_ht_hi[:3, 3] = dt_world
+
             # Alternative using solve: H_HT_HI = np.linalg.solve(self.hand_init_H, self.hand_moving_H)
         except np.linalg.LinAlgError:
             logger.error(f"Error ({self.operator_name}): Could not invert initial hand matrix. Resetting.")
