@@ -11,7 +11,7 @@ from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.publisher import Publisher
 from sensor_msgs.msg import JointState
-from std_msgs.msg import Float64MultiArray
+from std_msgs.msg import Bool, Float64MultiArray
 
 from beavr.teleop.configs.constants import robots
 
@@ -32,6 +32,8 @@ class OpenArmForwardController:
 
         self._joint_states: Optional[JointState] = None
         self._joint_states_lock = threading.Lock()
+        self._pedal_pressed = False
+        self._pedal_pressed_lock = threading.Lock()
         self._current_joint_positions: Optional[np.ndarray] = None
         self._current_joint_velocities: Optional[np.ndarray] = None
         self._current_joint_efforts: Optional[np.ndarray] = None
@@ -49,6 +51,16 @@ class OpenArmForwardController:
             10,
             callback_group=ReentrantCallbackGroup(),
         )
+
+        # The pedal press can be simulated on the keyboard with Ctrl + Alt + 1 (pressed)
+        # and Ctrl + Alt + 2 (released).
+        self.pedal_pressed_subscriber = self._node.create_subscription(
+            Bool,
+            "/pedal_pressed",
+            self._pedal_pressed_callback,
+            10
+        )
+
         self._wait_for_joint_states()
         logger.debug("Waiting for first joint state message (non-blocking)...")
         logger.info(f"OpenArmForwardController initialized, publishing to {self.command_topic_name}")
@@ -104,6 +116,10 @@ class OpenArmForwardController:
             if len(efforts) == self.num_joints:
                 self._current_joint_efforts = np.array(efforts, dtype=np.float32)
 
+    def _pedal_pressed_callback(self, msg: Bool):
+        with self._pedal_pressed_lock:
+            self._pedal_pressed = msg.data
+
     def _wait_for_joint_states(self, timeout: float = 10.0):
         start_time = time.time()
         while self._current_joint_positions is None:
@@ -157,7 +173,10 @@ class OpenArmForwardController:
         command = Float64MultiArray()
         command.data = [float(x) for x in scaled_joint_angles]
 
-        self._joint_command_publisher.publish(command)
+
+        with self._pedal_pressed_lock:
+            if self._pedal_pressed:
+                self._joint_command_publisher.publish(command)
         return True
 
     def home_arm(self) -> bool:
@@ -171,6 +190,8 @@ class OpenArmForwardController:
         logger.info("Cleaning up OpenArm forward controller...")
         if hasattr(self, "_joint_state_subscriber"):
             self._node.destroy_subscription(self._joint_state_subscriber)
+        if hasattr(self, "_pedal_pressed_subscriber"):
+            self._node.destroy_subscription(self._pedal_pressed_subscriber)
         if hasattr(self, "_joint_command_publisher"):
             self._node.destroy_publisher(self._joint_command_publisher)
         if hasattr(self, "_executor"):

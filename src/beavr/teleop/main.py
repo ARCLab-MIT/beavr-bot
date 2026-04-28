@@ -9,6 +9,7 @@ Uses the structured configuration system with automatic CLI flag generation via 
 import logging
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Optional
 
 import draccus
@@ -229,7 +230,6 @@ def main(cfg: MainConfig):
             --teleop.ports.keypoint_stream_port=9000 \
             --teleop.ports.control_stream_port=9001
     """
-
     # Apply YAML configuration overrides
     # Note: CLI flags (from Draccus) already applied, YAML merges underneath
     yaml_overrides = load_yaml_config(cfg.config_file)
