@@ -97,3 +97,10 @@ outputs/
 
 # Data
 data/
+visualizations/
+
+
+# ros
+install/
+log/
+build/

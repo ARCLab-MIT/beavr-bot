@@ -12,7 +12,8 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from beavr.teleop.common.configs.loader import Laterality, log_laterality_configuration
-from beavr.teleop.components.interface.robots.openarm_robot import OpenArmRobot
+from beavr.teleop.components.interface.controller.robots.openarm_gripper_control import OpenArmGripperRobot
+from beavr.teleop.components.interface.robots.openarm_pink_robot import OpenArmPinkRobot
 from beavr.teleop.configs.constants import network, ports, robots
 from beavr.teleop.configs.robots import TeleopRobotConfig
 from beavr.teleop.configs.robots.shared_components import SharedComponentRegistry
@@ -28,7 +29,7 @@ class OpenArmRobotCfg:
     reset_subscribe_port: int = ports.OPENARM_RESET_SUBSCRIBE_PORT
     home_subscribe_port: int = ports.OPENARM_HOME_SUBSCRIBE_PORT
     state_publish_port: int = ports.OPENARM_STATE_PUBLISH_PORT
-    teleoperation_state_port: int = ports.OPENARM_TELEOPERATION_STATE_PORT
+    teleoperation_state_port: int = ports.KEYPOINT_STREAM_PORT
     recorder_config: dict[str, Any] = field(
         default_factory=lambda: {
             "robot_identifier": robots.ROBOT_IDENTIFIER_LEFT_OPENARM,
@@ -55,7 +56,7 @@ class OpenArmRobotCfg:
                 raise ValueError(f"Port out of valid range (1-65535): {port}")
 
     def build(self):
-        return OpenArmRobot(
+        return OpenArmPinkRobot(
             host=self.host,
             endeff_publish_port=self.endeff_publish_port,
             endeff_subscribe_port=self.endeff_subscribe_port,
@@ -82,7 +83,7 @@ class OpenArmOperatorCfg:
     moving_average_limit: int = 3
     arm_resolution_port: int = ports.KEYPOINT_STREAM_PORT
     use_filter: bool = False
-    teleoperation_state_port: int = ports.OPENARM_TELEOPERATION_STATE_PORT
+    teleoperation_state_port: int = ports.KEYPOINT_STREAM_PORT
     logging_config: dict[str, Any] = field(
         default_factory=lambda: {
             "enabled": False,
@@ -124,6 +125,28 @@ class OpenArmOperatorCfg:
             use_filter=self.use_filter,
             teleoperation_state_port=self.teleoperation_state_port,
             logging_config=self.logging_config,
+        )
+
+
+@dataclass
+class OpenArmGripperRobotCfg:
+    host: str = network.HOST_ADDRESS
+    gripper_subscribe_port: int = robots.OPENARM_GRIPPER_SUBSCRIBE_PORT
+    recorder_config: dict[str, Any] = field(
+        default_factory=lambda: {
+            "robot_identifier": robots.ROBOT_IDENTIFIER_OPENARM_GRIPPER,
+            "recorded_data": [],
+        }
+    )
+
+    def __post_init__(self):
+        if not (1 <= self.gripper_subscribe_port <= 65535):
+            raise ValueError(f"Port out of valid range (1-65535): {self.gripper_subscribe_port}")
+
+    def build(self):
+        return OpenArmGripperRobot(
+            host=self.host,
+            gripper_subscribe_port=self.gripper_subscribe_port,
         )
 
 
@@ -182,6 +205,16 @@ class OpenArmConfig:
                         robots.RECORDED_DATA_COMMANDED_CARTESIAN_STATE,
                         robots.RECORDED_DATA_JOINT_ANGLES_RAD,
                     ],
+                },
+            )
+        )
+        self.robots.append(
+            OpenArmGripperRobotCfg(
+                host=network.HOST_ADDRESS,
+                gripper_subscribe_port=robots.OPENARM_GRIPPER_SUBSCRIBE_PORT,
+                recorder_config={
+                    "robot_identifier": robots.ROBOT_IDENTIFIER_OPENARM_GRIPPER,
+                    "recorded_data": [],
                 },
             )
         )

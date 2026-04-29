@@ -44,6 +44,9 @@ OCULUS_JOINTS = {
     "middle": [12, 13, 14, 15],
     "ring": [17, 18, 19, 20],
     "pinky": [22, 23, 24, 25],  # little finger
+    # Fingertip indices for convenience
+    "thumb_tip": 5,
+    "index_tip": 10,
 }
 
 OCULUS_VIEW_LIMITS = {
@@ -106,12 +109,12 @@ OPENARM_LEFT_JOINT_NAMES = [
     "openarm_left_joint7",
 ]
 OPENARM_HOME_JS = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-OPENARM_TRAJECTORY_DURATION_SEC = 2
+OPENARM_TRAJECTORY_DURATION_SEC = 0.1
 OPENARM_NUM_JOINTS = 7
 
 # MoveIt IK solver configuration
 OPENARM_IK_GROUP_NAME = "left_arm"
-OPENARM_IK_FRAME_ID = "openarm_body_link0"
+OPENARM_IK_FRAME_ID = "world"
 OPENARM_IK_LINK_NAME = "openarm_left_hand_tcp"
 
 # -----------------------------------------------------------------------------
@@ -196,6 +199,27 @@ ARM_TELEOP_STOP = 0
 ARM_HIGH_RESOLUTION = 1
 ARM_LOW_RESOLUTION = 0
 TELEOP_HANDSHAKE_PORT = 8150
+
+# -----------------------------------------------------------------------------
+# OpenArm Gripper constants
+# -----------------------------------------------------------------------------
+GRIPPER_OPEN = 0
+GRIPPER_CLOSE = 1
+OPENARM_GRIPPER_OPEN = 0
+OPENARM_GRIPPER_CLOSE = 1
+OPENARM_GRIPPER_THRESHOLD_M = 0.09  # 9cm max distance for continuous mapping
+OPENARM_GRIPPER_MAX_WIDTH_M = 0.045  # 4.5cm maximum gripper opening
+OPENARM_GRIPPER_MIN_WIDTH_M = 0.0  # 0cm minimum (fully closed)
+OPENARM_GRIPPER_DEFAULT_SPEED_MPS = 0.15  # 15cm/s default speed
+ROBOT_IDENTIFIER_OPENARM_GRIPPER = "openarm_gripper"
+
+# -----------------------------------------------------------------------------
+# Port mappings for OpenArm components
+# -----------------------------------------------------------------------------
+# Operator publishes gripper commands on this port
+OPENARM_GRIPPER_CMD_PORT = 10046
+# OpenArmGripperRobot subscribes to gripper commands on this port
+OPENARM_GRIPPER_SUBSCRIBE_PORT = 10046
 
 # -----------------------------------------------------------------------------
 # VR display constants

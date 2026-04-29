@@ -1,4 +1,5 @@
 import logging
+import math
 import time
 from copy import deepcopy as copy
 from typing import Any, Dict, Optional
@@ -22,12 +23,12 @@ from beavr.teleop.components.detector.detector_types import (
     SessionCommand,
 )
 from beavr.teleop.components.interface.interface_types import CartesianState
-from beavr.teleop.components.operator import CartesianTarget
 from beavr.teleop.components.operator.operator_base import Operator
-from beavr.teleop.components.operator.solvers.filters import CompStateFilter
+from beavr.teleop.components.operator.operator_types import CartesianTarget, GripperCommand
 from beavr.teleop.configs.constants import robots
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.ERROR)
 
 
 class XArmOperator(Operator):
@@ -136,16 +137,31 @@ class XArmOperator(Operator):
             message_type=CartesianState,
         )
 
+        # Subscribe to transformed hand coordinates for gripper calculation
+        coords_topic = f"{hand_side}_{robots.TRANSFORMED_HAND_COORDS}"
+        self._hand_coords_subscriber = ZMQSubscriber(
+            host=host,
+            port=transformed_keypoints_port,
+            topic=coords_topic,
+            context=self._context,
+            message_type=InputFrame,
+        )
+        self._latest_hand_coords = None
+
         self._subscribers = {
             "endeff_homo": self.endeff_homo_subscriber,
             "teleop_state": self._arm_teleop_state_subscriber,
             "resolution_scale": self._arm_resolution_subscriber,
+            "hand_coords": self._hand_coords_subscriber,
         }
 
         # Using the centralized publisher manager
         self._publisher_manager = ZMQPublisherManager.get_instance(self._context)
         self._publisher_host = host
         self._publisher_port = endeff_publish_port
+        self._gripper_publish_port = robots.OPENARM_GRIPPER_CMD_PORT
+        self._gripper_width = robots.OPENARM_GRIPPER_MIN_WIDTH_M
+        self._first_gripper_publish = True
 
         self._stream_oculus = stream_oculus
         self.stream_configs = stream_configs
@@ -186,15 +202,16 @@ class XArmOperator(Operator):
 
         # Initialize pose logger based on config
         self.logging_config = logging_config or {"enabled": False}
-        self.logging_enabled = self.logging_config.get("enabled", False)
+
+        self.logging_config = {"enabled": True, "filename": "openarm"}
+
+        self.logging_enabled = False  # self.logging_config.get("enabled", False)
         self.pose_logger: Optional[PoseLogger] = None
 
         if self.logging_enabled:
-            log_filename = self.logging_config.get("filename", f"{self.operator_name}_poses.csv")
-            logger.info(
-                f"Initializing pose logger for {self.operator_name} with config: {self.logging_config}"
-            )
-            self.pose_logger = PoseLogger(filename=log_filename)  # Pass filename if specified
+            log_prefix = self.logging_config.get("filename", self.operator_name)
+            logger.info(f"Initializing pose logger for {self.operator_name} with config: {self.logging_config}")
+            self.pose_logger = PoseLogger(prefix=log_prefix)
         else:
             self.pose_logger = None
 
@@ -241,9 +258,12 @@ class XArmOperator(Operator):
         """Returns whether the operator is controlling a real robot (placeholder)."""
         return self.real
 
-    # ------------------------------
-    # Frame / Matrix utilities
-    # ------------------------------
+    def _contains_nan(self, arr: np.ndarray) -> bool:
+        """Check if numpy array contains any NaN values."""
+        if arr is None:
+            return True
+        return bool(np.any(np.isnan(arr)))
+
     def _get_hand_frame(self) -> Optional[np.ndarray]:
         """
         Gets the latest hand frame from the ZMQ subscriber.
@@ -253,8 +273,11 @@ class XArmOperator(Operator):
             A 4x3 numpy array representing the hand frame ([t; R_col1; R_col2; R_col3]),
             or None if no valid frame is available.
         """
-        # Try to get new data without blocking
+
+        # Normal mode: Try to get new data without blocking
         data = self._arm_transformed_keypoint_subscriber.recv_keypoints()
+        if data is not None:
+            logger.debug(f"Received data from subscriber: has nan {math.isnan(data.keypoints[0][0])}")
 
         if data is not None:
             # Process new data - expect InputFrame object with frame_vectors
@@ -264,6 +287,7 @@ class XArmOperator(Operator):
                     # Convert from Tuple[Tuple[float, float, float], ...] to numpy array (4, 3)
                     frame_data = np.array(data.frame_vectors, dtype=np.float64).reshape(4, 3)
                     self.last_valid_hand_frame = frame_data  # Cache the new valid frame
+                    logger.debug(f"Created frame_data shape: {frame_data.shape}")
                     return frame_data
 
             except Exception as e:
@@ -272,10 +296,11 @@ class XArmOperator(Operator):
 
         # If no new data or processing failed, return the cached frame if it exists
         if self.last_valid_hand_frame is not None:
-            logger.info(f"No new data, returning cached frame: {self.last_valid_hand_frame}")
+            logger.debug(f"No new data, returning cached frame")
             return self.last_valid_hand_frame
 
         # If no new data and no cached frame, return None
+        logger.debug("No new data and no cached frame, returning None")
         return None
 
     def _turn_frame_to_homo_mat(self, frame: np.ndarray) -> np.ndarray:
@@ -297,7 +322,11 @@ class XArmOperator(Operator):
         # The frame stores columns of R, so transpose r_cols to get R
         homo_mat[:3, :3] = r_cols.T
         homo_mat[:3, 3] = t
-        # homo_mat[3, 3] = 1 # Already set by np.eye(4)
+
+        # Check if the rotation matrix is valid before returning
+        r_mat = homo_mat[:3, :3]
+        if self._contains_nan(r_mat):
+            logger.warning(f"Hand frame contains NaN in rotation matrix. Frame:\n{frame}")
 
         return homo_mat
 
@@ -445,6 +474,7 @@ class XArmOperator(Operator):
         )
         robot_frame_homo = self.endeff_homo_subscriber.recv_keypoints()
 
+        logger.info(f"****** {self.operator_name}: RESETTING TELEOP waiting for robot******")
         # Keep trying until we get a response
         while robot_frame_homo is None:
             self._publisher_manager.publish(
@@ -456,6 +486,7 @@ class XArmOperator(Operator):
             robot_frame_homo = self.endeff_homo_subscriber.recv_keypoints()
             time.sleep(0.01)
 
+        logger.info(f"****** {self.operator_name}: RESETTING TELEOP --- robot_frame_homo ******")
         try:
             h = np.array(robot_frame_homo.h_matrix, dtype=np.float64).reshape(4, 4)
             self.robot_init_h = h
@@ -484,7 +515,19 @@ class XArmOperator(Operator):
         try:
             self.hand_init_h = self._turn_frame_to_homo_mat(first_hand_frame)
             self.hand_init_t = copy(self.hand_init_h[:3, 3])  # Store initial hand translation
-            logger.info(f"{self.operator_name} Hand init H:\n{self.hand_init_h}")
+
+            # Validate that the rotation matrix is valid (near-orthonormal)
+            r_mat = self.hand_init_h[:3, :3]
+            # Check if rotation part is valid using SVD
+            r_fixed = self.project_to_rotation_matrix(r_mat)
+            if np.allclose(r_mat, r_fixed, atol=1e-6):
+                logger.info(f"{self.operator_name} Hand init H:\n{self.hand_init_h}")
+            else:
+                logger.warning(
+                    f"WARNING ({self.operator_name}): Initial hand frame rotation matrix was invalid, corrected via SVD"
+                )
+                self.hand_init_h[:3, :3] = r_fixed
+                logger.info(f"{self.operator_name} Hand init H (corrected):\n{self.hand_init_h}")
         except ValueError as e:
             logger.error(f"ERROR ({self.operator_name}): Failed to convert initial hand frame to matrix: {e}")
             self.is_first_frame = True  # Stay in reset state
@@ -524,12 +567,58 @@ class XArmOperator(Operator):
                 fixed.append(q)
         return np.array(fixed)
 
+    def _extract_gripper_width(self) -> float:
+        """
+        Computes continuous gripper width from hand keypoints.
+        Maps thumb-index distance (0-9cm) to gripper width (0-4.5cm).
+
+        Returns:
+            Float representing gripper width in meters
+        """
+        # Get latest hand coordinates
+        coords_data = self._hand_coords_subscriber.recv_keypoints()
+        if coords_data is None:
+            # No new data, return previous width (initialize to 0 if not set)
+            return getattr(self, "_gripper_width", robots.OPENARM_GRIPPER_MIN_WIDTH_M)
+
+        if coords_data.keypoints is None:
+            return getattr(self, "_gripper_width", robots.OPENARM_GRIPPER_MIN_WIDTH_M)
+
+        # Convert keypoints to numpy array and get thumb and index finger tip positions
+        keypoints = np.array(coords_data.keypoints, dtype=np.float64).reshape(-1, 3)
+        thumb_tip = keypoints[robots.OCULUS_JOINTS["thumb_tip"]]
+        index_tip = keypoints[robots.OCULUS_JOINTS["index_tip"]]
+
+        # Calculate distance between thumb and index fingertips
+        distance = np.linalg.norm(thumb_tip - index_tip)
+        logger.debug(f"[gripper] current index thumb distance: {distance * 1000:.1f}mm")
+
+        # Clamp distance to valid range [0, 9cm]
+        clamped_distance = min(distance, robots.OPENARM_GRIPPER_THRESHOLD_M)
+
+        # Map distance to gripper width: 0-9cm -> 0-4.5cm
+        # Linear mapping: width = (distance / max_distance) * max_width
+        gripper_width = (clamped_distance / robots.OPENARM_GRIPPER_THRESHOLD_M) * robots.OPENARM_GRIPPER_MAX_WIDTH_M
+
+        # Ensure gripper width is within bounds
+        gripper_width = max(robots.OPENARM_GRIPPER_MIN_WIDTH_M, min(gripper_width, robots.OPENARM_GRIPPER_MAX_WIDTH_M))
+
+        self._gripper_width = gripper_width
+
+        logger.debug(
+            f"[{self.operator_name}] Gripper width: {self._gripper_width * 1000:.1f}mm "
+            f"(distance={clamped_distance * 1000:.1f}mm)"
+        )
+
+        return self._gripper_width
+
     def _apply_retargeted_angles(self):
         """
         Calculates and applies the retargeted end-effector pose based on hand motion.
         Handles state changes (reset, pause/resume), applies transformations,
         filters the result, and publishes the command.
         """
+        frame_start_time = time.time()
 
         # 1. Check for state changes (Pause/Resume, Resolution)
         new_arm_teleop_state = self._get_arm_teleop_state()
@@ -545,17 +634,22 @@ class XArmOperator(Operator):
 
         # Decide whether we should publish commands this cycle
         publish_commands = self.arm_teleop_state == robots.ARM_TELEOP_CONT
+        if not publish_commands:
+            logger.debug(f"Teleop state is STOP ({self.arm_teleop_state}), skipping command publication")
 
         # 2. Handle Reset Condition
         if needs_reset:
+            logger.debug(f"Attempting reset for {self.operator_name}")
             moving_hand_frame = self._reset_teleop()
             if moving_hand_frame is None:
                 logger.error(f"ERROR ({self.operator_name}): Reset failed, cannot proceed.")
                 return  # Exit if reset failed
+            logger.debug(f"Reset successful, got hand frame: {moving_hand_frame}")
             # Reset is done, is_first_frame is now False
         else:
             # 3. Get Current Hand Frame (if not resetting)
             moving_hand_frame = self._get_hand_frame()
+            logger.debug(f"Got hand frame: {moving_hand_frame}")
 
         # If no valid hand frame is available (after reset or during normal operation), exit
         if moving_hand_frame is None:
@@ -564,9 +658,7 @@ class XArmOperator(Operator):
 
         # Ensure initial robot/hand poses are set (should be handled by reset)
         if self.robot_init_h is None or self.hand_init_h is None:
-            logger.error(
-                f"ERROR ({self.operator_name}): Initial robot or hand poses not set. Triggering reset."
-            )
+            logger.error(f"ERROR ({self.operator_name}): Initial robot or hand poses not set. Triggering reset.")
             self.is_first_frame = True  # Force reset on next cycle
             return
 
@@ -582,7 +674,27 @@ class XArmOperator(Operator):
         # Use solve for potentially better numerical stability than inv
         try:
             h_hi_hh_inv = np.linalg.inv(self.hand_init_h)  # Inverse of initial hand pose
-            h_ht_hi = h_hi_hh_inv @ self.hand_moving_h  # Relative motion of hand w.r.t its start pose
+            h_ht_hi = h_hi_hh_inv @ self.hand_moving_h  # Relative motion of hand w.r.t its start pos
+
+            t_init = self.hand_init_h[:3, 3]
+            t_cur = self.hand_moving_h[:3, 3]
+            dt_world = t_cur - t_init
+
+            R_init = self.hand_init_h[:3, :3]
+            R_cur = self.hand_moving_h[:3, :3]
+            R_rel_world = R_cur @ R_init.T
+
+            rot = Rotation.from_matrix(R_rel_world)
+            yaw, pitch, roll = rot.as_euler("zyx", degrees=False)
+
+            yaw = -yaw
+
+            R_rel_fixed = Rotation.from_euler("zyx", [yaw, pitch, roll], degrees=False).as_matrix()
+
+            h_ht_hi = np.eye(4)
+            h_ht_hi[:3, :3] = R_rel_fixed
+            h_ht_hi[:3, 3] = dt_world
+
             # Alternative using solve: H_HT_HI = np.linalg.solve(self.hand_init_H, self.hand_moving_H)
         except np.linalg.LinAlgError:
             logger.error(f"Error ({self.operator_name}): Could not invert initial hand matrix. Resetting.")
@@ -630,6 +742,13 @@ class XArmOperator(Operator):
         h_rt_rh[:3, :3] = self.project_to_rotation_matrix(h_rt_rh[:3, :3])
         self.robot_moving_h = copy(h_rt_rh)  # Store the calculated target pose
 
+        # Log positions for debugging
+        logger.debug(
+            f"{self.operator_name} - robot_init_h pos: {self.robot_init_h[:3, 3]}, "
+            f"robot_moving_h pos: {self.robot_moving_h[:3, 3]}, "
+            f"current translation: {h_ht_hi_t}"
+        )
+
         # 8. Convert Target Pose to Cartesian [pos, quat]
         cart_target_raw = self._homo2cart(self.robot_moving_h)
 
@@ -667,7 +786,7 @@ class XArmOperator(Operator):
         cartesian_cmd = CartesianTarget(
             timestamp_s=time.time(),
             hand_side=self.hand_side,
-            frame_id="base",
+            frame_id="world",
             position_m=(float(position[0]), float(position[1]), float(position[2])),
             orientation_xyzw=(
                 float(orientation_quat[0]),
@@ -681,6 +800,9 @@ class XArmOperator(Operator):
         if publish_commands:
             try:
                 # TODO: Remove the literal in the topic arg use a constant.
+                logger.debug(
+                    f"Publishing command to {self._publisher_host}:{self._publisher_port}: pos={cartesian_cmd.position_m[:3]}, orient={cartesian_cmd.orientation_xyzw}"
+                )
                 self._publisher_manager.publish(
                     host=self._publisher_host,
                     port=self._publisher_port,
@@ -688,29 +810,91 @@ class XArmOperator(Operator):
                     data=cartesian_cmd,
                 )
                 # logger.info(f"Published end-effector command: {command_data}")
+
+                # Extract and publish gripper width
+                gripper_width_m = self._extract_gripper_width()
+
+                gripper_cmd = GripperCommand(
+                    timestamp_s=time.time(),
+                    hand_side=self.hand_side,
+                    width_m=gripper_width_m,
+                    speed_mps=robots.OPENARM_GRIPPER_DEFAULT_SPEED_MPS,
+                )
+
+                self._publisher_manager.publish(
+                    host=self._publisher_host,
+                    port=self._gripper_publish_port,
+                    topic="gripper_cmd",
+                    data=gripper_cmd,
+                )
+                logger.debug(f"[{self.operator_name}] Published gripper command: width={gripper_width_m:.3f}m")
             except (ConnectionError, SerializationError) as e:
                 logger.error(f"Failed to publish end-effector command: {e}")
             except Exception as e:
                 logger.error(f"Unexpected error publishing command: {e}")
+        else:
+            logger.debug(
+                f"Skipping command publication: publish_commands={publish_commands}, arm_teleop_state={self.arm_teleop_state}"
+            )
 
         # 12. Logging (Optional)
         if self.logging_enabled and self.pose_logger:
             try:
-                # Ensure all matrices are valid before logging
-                if (
-                    self.hand_init_h is not None
-                    and self.robot_init_h is not None
-                    and self.hand_moving_h is not None
-                    and self.robot_moving_h is not None
-                ):
-                    self.pose_logger.log_frame(
-                        self.hand_init_h,
-                        self.robot_init_h,
-                        self.hand_moving_h,
-                        self.robot_moving_h,  # Log the target pose *before* filtering
+                frame_processing_time = time.time() - frame_start_time
+                # Identify which matrices have NaN values
+                nan_matrices = []
+                if self.hand_init_h is None or self._contains_nan(self.hand_init_h):
+                    nan_matrices.append("hand_init_h")
+                if self.robot_init_h is None or self._contains_nan(self.robot_init_h):
+                    nan_matrices.append("robot_init_h")
+                if self.hand_moving_h is None or self._contains_nan(self.hand_moving_h):
+                    nan_matrices.append("hand_moving_h")
+                if self.robot_moving_h is None or self._contains_nan(self.robot_moving_h):
+                    nan_matrices.append("robot_moving_h")
+                if h_hi_hh_inv is None or self._contains_nan(h_hi_hh_inv):
+                    nan_matrices.append("h_hi_hh_inv")
+                if h_ht_hi is None or self._contains_nan(h_ht_hi):
+                    nan_matrices.append("h_ht_hi")
+                if h_r_v_inv is None or self._contains_nan(h_r_v_inv):
+                    nan_matrices.append("h_r_v_inv")
+                if h_t_v_inv is None or self._contains_nan(h_t_v_inv):
+                    nan_matrices.append("h_t_v_inv")
+                if h_ht_hi_r is None or self._contains_nan(h_ht_hi_r):
+                    nan_matrices.append("h_ht_hi_r")
+                if h_ht_hi_t is None or self._contains_nan(h_ht_hi_t):
+                    nan_matrices.append("h_ht_hi_t")
+                if relative_affine_in_robot_frame is None or self._contains_nan(relative_affine_in_robot_frame):
+                    nan_matrices.append("relative_affine_in_robot_frame")
+                if cart_target_raw is None or self._contains_nan(cart_target_raw):
+                    nan_matrices.append("cart_target_raw")
+                if cart_target_filtered is None or self._contains_nan(cart_target_filtered):
+                    nan_matrices.append("cart_target_filtered")
+
+                # Only log if all matrices are valid
+                if not nan_matrices:
+                    self.pose_logger.log_transformation_pipeline(
+                        hand_init_h=self.hand_init_h,
+                        robot_init_h=self.robot_init_h,
+                        hand_moving_h=self.hand_moving_h,
+                        h_hi_hh_inv=h_hi_hh_inv,
+                        h_ht_hi=h_ht_hi,
+                        h_r_v_inv=h_r_v_inv,
+                        h_t_v_inv=h_t_v_inv,
+                        h_ht_hi_r=h_ht_hi_r,
+                        h_ht_hi_t=h_ht_hi_t,
+                        relative_affine=relative_affine_in_robot_frame,
+                        robot_moving_h=self.robot_moving_h,
+                        cart_target_raw=cart_target_raw,
+                        cart_target_filtered=cart_target_filtered,
+                        resolution_scale=self.resolution_scale,
+                        frame_processing_time=frame_processing_time,
                     )
+                    logger.debug(f"Logged transformation pipeline frame {self.pose_logger.frame_count - 1}")
+                else:
+                    logger.warning(f"Skipping logging due to NaN values in matrices: {', '.join(nan_matrices)}")
+                    logger.info(f"hand hand moving frame: {self.hand_moving_h}")
             except Exception as e:
-                logger.error(f"Error logging frame ({self.operator_name}): {e}")
+                logger.error(f"Error logging transformation pipeline ({self.operator_name}): {e}")
 
     def moving_average(self, action: np.ndarray, queue: list, limit: int) -> np.ndarray:
         """
@@ -750,13 +934,11 @@ class XArmOperator(Operator):
         # Safely clean up subscribers if they were initialized
         if hasattr(self, "_subscribers") and self._subscribers:
             for subscriber in self._subscribers.values():
-                if subscriber:  # Check if subscriber is not None
+                if subscriber is not None:  # Check if subscriber is not None
                     try:
                         subscriber.stop()
                     except Exception as e:
-                        logger.warning(
-                            f"Error stopping subscriber in {getattr(self, 'operator_name', 'unknown')}: {e}"
-                        )
+                        logger.warning(f"Error stopping subscriber in {getattr(self, 'operator_name', 'unknown')}: {e}")
 
         # Stop handshake server if it exists
         if hasattr(self, "_handshake_coordinator") and hasattr(self, "_handshake_server_id"):

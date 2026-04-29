@@ -44,7 +44,8 @@ class BasePublisher:
         """Initialize the socket using provided or global context."""
         try:
             self._socket = self._context.socket(socket_type)
-            self._socket.setsockopt(zmq.SNDHWM, 1)  # Only keep latest message
+            self._socket.setsockopt(zmq.SNDHWM, 10)  # Keep last 10 messages
+            self._socket.setsockopt(zmq.LINGER, 0)  # Don't block on close
             addr = f"tcp://*:{self._port}"
             self._socket.bind(addr)
         except zmq.ZMQError as e:
@@ -75,7 +76,7 @@ class PublisherThread(threading.Thread):
         self._context = context or get_global_context()
         self._socket = None
         self._running = True
-        self._queue = queue.Queue(maxsize=100)  # Limit queue size to prevent memory issues
+        self._queue = queue.Queue(maxsize=30)  # Limit queue size to prevent memory issues
         self._started = threading.Event()
 
     def send(self, topic: str, data: Any) -> None:
@@ -85,14 +86,27 @@ class PublisherThread(threading.Thread):
             topic: The topic to publish to
             data: The data to publish
         """
+        start = time.perf_counter()
         try:
             # Serialize data here to avoid blocking the main thread
             buffer = pickle.dumps(data, protocol=-1)
+            elapsed_serialize = time.perf_counter() - start
+            t2 = time.perf_counter()
             self._queue.put_nowait((topic, buffer))
+            elapsed_queue = time.perf_counter() - t2
+            elapsed_total = time.perf_counter() - start
+            if elapsed_serialize > 0.001 or elapsed_queue > 0.001:
+                logger.debug(
+                    f"[Timing] Publisher.send serialize={elapsed_serialize*1000:.2f}ms "
+                    f"queue={elapsed_queue*1000:.2f}ms total={elapsed_total*1000:.2f}ms "
+                    f"bytes={len(buffer)} topic={topic}"
+                )
         except queue.Full:
-            logger.warning(f"Publisher queue full for {self._host}:{self._port}, dropping message")
+            elapsed_total = time.perf_counter() - start
+            logger.warning(f"Publisher queue full for {self._host}:{self._port}, dropping message (elapsed={elapsed_total*1000:.2f}ms)")
         except Exception as e:
-            logger.error(f"Error serializing data for publisher: {e}")
+            elapsed_total = time.perf_counter() - start
+            logger.error(f"Error serializing data for publisher: {e} (elapsed={elapsed_total*1000:.2f}ms)")
 
     def stop(self) -> None:
         """Stop the publisher thread gracefully."""
@@ -109,7 +123,7 @@ class PublisherThread(threading.Thread):
         try:
             # Create socket in the worker thread
             self._socket = self._context.socket(zmq.PUB)
-            self._socket.setsockopt(zmq.SNDHWM, 1)  # Only keep latest message
+            self._socket.setsockopt(zmq.SNDHWM, 10)  # Keep last 10 messages
             addr = f"tcp://*:{self._port}"
             self._socket.bind(addr)
 

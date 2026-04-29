@@ -218,6 +218,65 @@ class PoseLogger(BaseLogger):
         if self.frame_count % self.write_batch_size == 0 and self._save_json(self.log_file):
             self.data = {}  # Only clear data after successful save
 
+    def log_transformation_pipeline(
+        self,
+        hand_init_h,
+        robot_init_h,
+        hand_moving_h,
+        h_hi_hh_inv,
+        h_ht_hi,
+        h_r_v_inv,
+        h_t_v_inv,
+        h_ht_hi_r,
+        h_ht_hi_t,
+        relative_affine,
+        robot_moving_h,
+        cart_target_raw,
+        cart_target_filtered,
+        resolution_scale,
+        frame_processing_time=None,
+    ):
+        """Log detailed transformation pipeline data."""
+        if self._closed:
+            raise RuntimeError("Cannot log to closed logger")
+
+        frame_data = {
+            "input": {
+                "hand_init_h": self._convert_numpy_to_list(hand_init_h),
+                "robot_init_h": self._convert_numpy_to_list(robot_init_h),
+                "hand_moving_h": self._convert_numpy_to_list(hand_moving_h),
+            },
+            "transformation_matrices": {
+                "h_hi_hh_inv": self._convert_numpy_to_list(h_hi_hh_inv),
+                "h_r_v_inv": self._convert_numpy_to_list(h_r_v_inv),
+                "h_t_v_inv": self._convert_numpy_to_list(h_t_v_inv),
+            },
+            "intermediate": {
+                "h_ht_hi": self._convert_numpy_to_list(h_ht_hi),
+                "h_ht_hi_r": self._convert_numpy_to_list(h_ht_hi_r),
+                "h_ht_hi_t": self._convert_numpy_to_list(h_ht_hi_t),
+                "relative_affine_in_robot_frame": self._convert_numpy_to_list(relative_affine),
+            },
+            "output": {
+                "robot_moving_h": self._convert_numpy_to_list(robot_moving_h),
+                "cart_target_raw": self._convert_numpy_to_list(cart_target_raw),
+                "cart_target_filtered": self._convert_numpy_to_list(cart_target_filtered),
+            },
+            "metadata": {
+                "resolution_scale": resolution_scale,
+                "timestamp": time.time(),
+                "frame": self.frame_count,
+                "frame_processing_time": frame_processing_time,
+            },
+        }
+
+        self.data[str(self.frame_count)] = frame_data
+        self.frame_count += 1
+
+        # Save every 5 frames
+        if self.frame_count % self.write_batch_size == 0 and self._save_json(self.log_file):
+            self.data = {}  # Only clear data after successful save
+
 
 class HandLogger(BaseLogger):
     """Logger for hand data."""
@@ -235,12 +294,8 @@ class HandLogger(BaseLogger):
         frame_data = {
             "timestamp": time.time(),
             "frame": self.frame_count,
-            "finger_input_positions": {
-                k: self._convert_numpy_to_list(v) for k, v in finger_input_positions.items()
-            },
-            "finger_computed_angles": {
-                k: self._convert_numpy_to_list(v) for k, v in finger_computed_angles.items()
-            },
+            "finger_input_positions": {k: self._convert_numpy_to_list(v) for k, v in finger_input_positions.items()},
+            "finger_computed_angles": {k: self._convert_numpy_to_list(v) for k, v in finger_computed_angles.items()},
         }
 
         if finger_states is not None:

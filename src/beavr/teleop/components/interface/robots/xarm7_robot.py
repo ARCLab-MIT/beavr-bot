@@ -123,6 +123,10 @@ class XArm7Robot(RobotWrapper):
         self._publisher_host = host
         self._endeff_publish_port = endeff_publish_port
         self._state_publish_port = state_publish_port
+    
+        logger.info(f"[ROBOT {self.name}] Port configuration: endeff_subscribe_port={endeff_subscribe_port}, "
+                   f"endeff_publish_port={endeff_publish_port}, reset_subscribe_port={reset_subscribe_port}, "
+                   f"home_subscribe_port={home_subscribe_port}, state_publish_port={state_publish_port}")
 
         # Add caches for received messages
         self._latest_cartesian_coords = None
@@ -265,10 +269,17 @@ class XArm7Robot(RobotWrapper):
         return self.get_joint_state()
 
     def send_robot_pose(self):
+        logger.info(f"[ROBOT {self.name}] send_robot_pose called - getting current robot pose")
         pose_homo = self._controller.get_arm_pose()
+        if pose_homo is None:
+            logger.warning(f"[ROBOT {self.name}] Could not get robot pose for reset - pose is None")
+            return
         try:
             h_matrix = tuple(tuple(float(x) for x in row) for row in pose_homo)
-
+            logger.info(
+                f"[ROBOT {self.name}] Publishing robot pose to 'endeff_homo' on port {self._endeff_publish_port}: "
+                f"position={h_matrix[0][3]:.3f}, {h_matrix[1][3]:.3f}, {h_matrix[2][3]:.3f}"
+            )
             # TODO: Remove the literal in the topic arg use a constant.
             self._publisher_manager.publish(
                 host=self._publisher_host,
@@ -279,11 +290,14 @@ class XArm7Robot(RobotWrapper):
                     h_matrix=h_matrix,
                 ),
             )
+            logger.info(f"[ROBOT {self.name}] Successfully published robot pose to 'endeff_homo'")
         except Exception as e:
             logger.error(f"Failed to publish robot pose for {self.name}: {e}")
 
     def check_reset(self):
         reset_bool = self._reset_subscriber.recv_keypoints()
+        if reset_bool is not None:
+            logger.info(f"[ROBOT {self.name}] Reset command received from 'reset' topic")
         return reset_bool is not None
 
     def check_home(self):
@@ -298,6 +312,7 @@ class XArm7Robot(RobotWrapper):
 
     # Modified stream method with automatic recording start after reset
     def stream(self):
+        logger.info(f"[ROBOT {self.name}] Starting stream() - robot loop")
         self.home()
         assert self._controller.robot.set_mode_and_state(1, 0), "Failed to enter SERVO-READY"
 
@@ -312,15 +327,19 @@ class XArm7Robot(RobotWrapper):
                 # Calculate next frame time
                 next_frame_time = current_time + target_interval
 
-                if self.check_home() and not self._is_homed:
+                home_signaled = self.check_home()
+                if home_signaled and not self._is_homed:
+                    logger.info(f"[ROBOT {self.name}] Home signal received, homing robot and sending pose")
                     # Execute the homing motion.
                     self.home()
                     self._is_homed = True
                     self.send_robot_pose()
-                elif not self.check_home() and self._is_homed:
+                elif not home_signaled and self._is_homed:
+                    logger.debug(f"[ROBOT {self.name}] Home signal ended, clearing homed flag")
                     self._is_homed = False
 
                 if self.check_reset():
+                    logger.info(f"[ROBOT {self.name}] Reset command detected, sending robot pose")
                     self.send_robot_pose()
 
                 # Check operation state --------------------------------------------------

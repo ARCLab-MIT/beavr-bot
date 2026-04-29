@@ -65,8 +65,12 @@ class TeleOperator(ProcessInstantiator):
 
     # Function to start the components
     def _start_component(self, configs):
+        import traceback
+
+        logger.info(f"Starting component: {type(configs).__name__}")
         try:
             component = instantiate_from_target(configs)
+            logger.info(f"Component instantiated successfully: {type(component).__name__}")
             # Handle both single component and list of components
             if isinstance(component, list):
                 for comp in component:
@@ -74,7 +78,7 @@ class TeleOperator(ProcessInstantiator):
             else:
                 component.stream()
         except Exception as e:
-            logger.error(f"Error starting component: {e}")
+            logger.error(f"Error starting component: {e}\n{traceback.format_exc()}")
             raise
 
     # Function to start the detector component
@@ -112,7 +116,11 @@ class TeleOperator(ProcessInstantiator):
             # Instantiate the robot config in a separate process.
             # This is where the ``build()`` method is called.
             # Create the process first
-            process = Process(target=self._start_component, args=(robot_config,))
+            process = Process(
+                target=self._start_component,
+                args=(robot_config,),
+                name=f"robot_interface_{type(robot_config).__name__}",
+            )
             self.processes.append(process)
 
 
