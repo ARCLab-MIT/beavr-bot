@@ -108,6 +108,15 @@ OPENARM_LEFT_JOINT_NAMES = [
     "openarm_left_joint6",
     "openarm_left_joint7",
 ]
+OPENARM_RIGHT_JOINT_NAMES = [
+    "openarm_right_joint1",
+    "openarm_right_joint2",
+    "openarm_right_joint3",
+    "openarm_right_joint4",
+    "openarm_right_joint5",
+    "openarm_right_joint6",
+    "openarm_right_joint7",
+]
 OPENARM_HOME_JS = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 OPENARM_TRAJECTORY_DURATION_SEC = 0.1
 OPENARM_NUM_JOINTS = 7
@@ -178,6 +187,7 @@ ROBOT_IDENTIFIER_RIGHT_LEAP_HAND = "right_leap"
 ROBOT_IDENTIFIER_LEFT_LEAP_HAND = "left_leap"
 ROBOT_IDENTIFIER_LEAP = "leap"
 ROBOT_IDENTIFIER_LEFT_OPENARM = "left_openarm"
+ROBOT_IDENTIFIER_RIGHT_OPENARM = "right_openarm"
 
 # -----------------------------------------------------------------------------
 # Recorded data types

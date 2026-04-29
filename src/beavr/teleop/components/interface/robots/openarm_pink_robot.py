@@ -12,6 +12,7 @@ import qpsolvers
 from pink.tasks import DampingTask, FrameTask, PostureTask
 from scipy.spatial.transform import Rotation
 
+from beavr.teleop.common.configs.loader import Laterality 
 from beavr.teleop.common.network.handshake import HandshakeCoordinator
 from beavr.teleop.common.network.publisher import ZMQPublisherManager
 from beavr.teleop.common.network.subscriber import ZMQSubscriber
@@ -419,6 +420,7 @@ class OpenArmPinkRobot(RobotWrapper):
     def __init__(
         self,
         host: str,
+        laterality: Laterality,
         endeff_subscribe_port: int,
         reset_subscribe_port: int,
         home_subscribe_port: int,
@@ -428,7 +430,7 @@ class OpenArmPinkRobot(RobotWrapper):
         **kwargs,
     ):
         logger.info(
-            f"Initializing OpenArmPinkRobot with host={host}, endeff_publish_port={endeff_publish_port}, state_publish_port={state_publish_port}"
+            f"Initializing OpenArmPinkRobot with host={host}, laterality={laterality}, endeff_publish_port={endeff_publish_port}, state_publish_port={state_publish_port}"
         )
         if not endeff_publish_port:
             raise ValueError("OpenArmPinkRobot requires an 'endeff_publish_port'")
@@ -436,10 +438,19 @@ class OpenArmPinkRobot(RobotWrapper):
             raise ValueError("OpenArmPinkRobot requires a 'state_publish_port'")
 
         urdf_path = "/home/ubuntu/workshop-robotics/src/external_dependencies/openarm_description/urdf/robot/v10.urdf"
-        self._kinematics = PinkKinematics(ik_link_name="openarm_left_hand_tcp", urdf_path=urdf_path)
+
+        self._laterality = laterality
+        if laterality == Laterality.LEFT:
+            ik_link_name="openarm_left_hand_tcp"
+            command_topic_name = "/openarm_left_arm_forward_position_controller/commands"
+        else: # if laterality == Laterality.RIGHT:
+            ik_link_name="openarm_right_hand_tcp"
+            command_topic_name = "/openarm_right_arm_forward_position_controller/commands"
+
+        self._kinematics = PinkKinematics(ik_link_name=ik_link_name, urdf_path=urdf_path)
         logger.info("PinkKinematics created successfully")
 
-        self._controller = DexArmControl()
+        self._controller = DexArmControl(command_topic_name=command_topic_name)
 
         self._data_frequency = robots.VR_FREQ
         self._num_joints = len(robots.OPENARM_LEFT_JOINT_NAMES)
@@ -536,7 +547,10 @@ class OpenArmPinkRobot(RobotWrapper):
 
     @property
     def name(self):
-        return robots.ROBOT_IDENTIFIER_LEFT_OPENARM
+        if self._laterality == Laterality.LEFT:
+            return robots.ROBOT_IDENTIFIER_LEFT_OPENARM
+        else: #if self._laterality == Laterality.RIGHT:
+            return robots.ROBOT_IDENTIFIER_RIGHT_OPENARM
 
     @property
     def recorder_functions(self):

@@ -24,7 +24,7 @@ class OpenArmGripperController:
 
     def __init__(
         self,
-        gripper_action_name: str = "/openarm_left_gripper_controller/gripper_cmd",
+        gripper_action_name: str = "",
         max_width: float = None,
         min_width: float = None,
         default_speed: float = None,
@@ -142,6 +142,7 @@ class OpenArmGripperRobot(RobotWrapper):
     def __init__(
         self,
         host: str,
+        gripper_action_name: str,
         gripper_subscribe_port: int,
         **kwargs,
     ):
@@ -149,7 +150,7 @@ class OpenArmGripperRobot(RobotWrapper):
             f"Initializing OpenArmGripperRobot with host={host}, gripper_subscribe_port={gripper_subscribe_port}"
         )
 
-        self._controller = OpenArmGripperController()
+        self._controller = OpenArmGripperController(gripper_action_name=gripper_action_name)
 
         self._gripper_command_subscriber = ZMQSubscriber(
             host=host,

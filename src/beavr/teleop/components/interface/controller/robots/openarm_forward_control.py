@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 class OpenArmForwardController:
     def __init__(
         self,
-        command_topic_name: str = "/openarm_left_arm_forward_position_controller/commands",
+        command_topic_name: str = "",
         joint_names: Optional[list] = None,
         max_delta: float = 0.2,
     ):
