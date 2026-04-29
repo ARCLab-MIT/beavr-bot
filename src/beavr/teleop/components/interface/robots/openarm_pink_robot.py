@@ -36,7 +36,7 @@ logger.setLevel(logging.ERROR) #logging.DEBUG)
 # Pink Configuration Constants
 # ============================================================================
 # Task costs for FrameTask (end-effector positioning)
-PINK_POSITION_COST = 1.0  # [cost] / [m] - aggressive positioning priority
+PINK_POSITION_COST = 0.3  # [cost] / [m] - aggressive positioning priority
 PINK_ORIENTATION_COST = 1.0  # [cost] / [rad] - low cost to enable orientation tracking
 PINK_LM_DAMPING = 0.01  # Levenberg-Marquardt damping - very low for faster convergence
 
@@ -193,7 +193,7 @@ class PinkKinematics:
             logger.debug(f"[Pink IK] No seed state provided, using current config")
 
         # Usually, scalar-last order (x, y, z, w) - https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.transform.Rotation.from_quat.html
-        r = Rotation.from_quat(orientation_quat, scalar_first=True)
+        r = Rotation.from_quat(orientation_quat)
         rotation_matrix = r.as_matrix()
 
         # Validate rotation matrix
@@ -208,19 +208,6 @@ class PinkKinematics:
         # Update FrameTask target
         target_transform = self._end_effector_task.transform_target_to_world
 
-        delta_rot = [
-            [1.0,  0.0,  0.0],
-            [0.0, -1.0,  0.0],
-            [0.0,  0.0, -1.0]
-        ]
-        
-        # For left arm: pivot = np.array([0.00000000, 0.15349774, 0.08189955])
-        # For right arm, invert y axis
-        pivot = np.array([0.00000000, 0.15349774, 0.08189955])
-
-        position[2] = ((position[2] - pivot[2]) * (-1)) + pivot[2] # Invert Z with respect to starting position
-        position = Rotation.from_euler('z', -90, degrees=True).apply(position - pivot) + pivot 
-        rotation_matrix = delta_rot @ rotation_matrix
 
         target_transform.translation[:] = position
         target_transform.rotation[:] = rotation_matrix

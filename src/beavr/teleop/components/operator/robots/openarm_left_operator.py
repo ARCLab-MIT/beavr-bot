@@ -10,9 +10,9 @@ from .xarm7_operator import XArmOperator
 # Combined: axis swap with Z inversion correction
 H_R_V_LEFT =  np.array(
     [
-        [0.0, 1.0, 0.0, 0.0],
+        [0.0, -1.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0, 0.0],
         [0.0, 0.0, 1.0, 0.0],
-        [-1.0, 0.0, 0.0, 0.0],
         [0.0, 0.0, 0.0, 1.0],
     ]
 )
@@ -26,6 +26,14 @@ H_T_V_LEFT = np.array(
     ]
 )
 
+# Conversion into robot coordinate system
+# Translation: Flip z values and rotate around z axis (-90deg)
+TRANSLATION_TO_ROBOT_LEFT = np.array([
+    [ 0.0,  1.0,  0.0, -0.15349774],
+    [-1.0,  0.0,  0.0,  0.15349774],
+    [ 0.0,  0.0, -1.0,  0.16379910],
+    [ 0.0,  0.0,  0.0,  1.0],
+])
 
 
 class OpenArmLeftOperator(XArmOperator):
@@ -54,6 +62,7 @@ class OpenArmLeftOperator(XArmOperator):
             moving_average_limit=moving_average_limit,
             h_r_v=H_R_V_LEFT,
             h_t_v=H_T_V_LEFT,
+            final_translation=TRANSLATION_TO_ROBOT_LEFT,
             use_filter=use_filter,
             arm_resolution_port=arm_resolution_port,
             teleoperation_state_port=teleoperation_state_port,
