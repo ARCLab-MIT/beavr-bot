@@ -26,11 +26,11 @@ logger = logging.getLogger(__name__)
 class OpenArmRobotCfg:
     host: str = network.HOST_ADDRESS
     laterality: Laterality = Laterality.LEFT
-    endeff_publish_port: int = ports.OPENARM_ENDEFF_PUBLISH_PORT
-    endeff_subscribe_port: int = ports.OPENARM_ENDEFF_SUBSCRIBE_PORT
-    reset_subscribe_port: int = ports.OPENARM_RESET_SUBSCRIBE_PORT
+    endeff_publish_port: int = ports.OPENARM_LEFT_ENDEFF_PUBLISH_PORT
+    endeff_subscribe_port: int = ports.OPENARM_LEFT_ENDEFF_SUBSCRIBE_PORT
+    reset_subscribe_port: int = ports.OPENARM_LEFT_RESET_SUBSCRIBE_PORT
     home_subscribe_port: int = ports.OPENARM_HOME_SUBSCRIBE_PORT
-    state_publish_port: int = ports.OPENARM_STATE_PUBLISH_PORT
+    state_publish_port: int = ports.OPENARM_LEFT_STATE_PUBLISH_PORT
     teleoperation_state_port: int = ports.KEYPOINT_STREAM_PORT
     recorder_config: dict[str, Any] = field(
         default_factory=lambda: {}
@@ -74,8 +74,8 @@ class OpenArmOperatorCfg:
         }
     )
     stream_oculus: bool = True
-    endeff_publish_port: int = ports.OPENARM_ENDEFF_SUBSCRIBE_PORT
-    endeff_subscribe_port: int = ports.OPENARM_ENDEFF_PUBLISH_PORT
+    endeff_publish_port: int = ports.OPENARM_LEFT_ENDEFF_SUBSCRIBE_PORT
+    endeff_subscribe_port: int = ports.OPENARM_LEFT_ENDEFF_PUBLISH_PORT
     moving_average_limit: int = 3
     arm_resolution_port: int = ports.KEYPOINT_STREAM_PORT
     use_filter: bool = False
@@ -148,7 +148,7 @@ class OpenArmOperatorCfg:
 class OpenArmGripperRobotCfg:
     host: str = network.HOST_ADDRESS
     laterality: Laterality = Laterality.LEFT
-    gripper_subscribe_port: int = robots.OPENARM_GRIPPER_SUBSCRIBE_PORT
+    gripper_subscribe_port: int = robots.OPENARM_LEFT_GRIPPER_SUBSCRIBE_PORT
     recorder_config: dict[str, Any] = field(
         default_factory=lambda: {
             "robot_identifier": robots.ROBOT_IDENTIFIER_OPENARM_GRIPPER,
@@ -190,94 +190,171 @@ class OpenArmConfig:
         self._configure_for_laterality()
 
     def _configure_for_laterality(self):
+        # Create detector configurations - unified approach handles all lateralities
         self.detector = []
-        self.detector.append(
-            SharedComponentRegistry.get_detector_config(
-                hand_side=self.laterality.value,
-                host=network.HOST_ADDRESS,
+        if self.laterality == Laterality.BIMANUAL:
+            # Single detector handles both hands
+            self.detector.append(
+                SharedComponentRegistry.get_bimanual_detector_config(
+                    host=network.HOST_ADDRESS,
+                )
             )
-        )
+        else:
+            # Single detector for specific hand side
+            hand_side = robots.RIGHT if self.laterality == Laterality.RIGHT else robots.LEFT
+            self.detector.append(
+                SharedComponentRegistry.get_detector_config(
+                    hand_side=hand_side,
+                    host=network.HOST_ADDRESS,
+                )
+            )
 
+        # Keypoint Transform Configurations
         self.transforms = []
-        self.transforms.append(
-            SharedComponentRegistry.get_transform_config(
-                hand_side=self.laterality.value,
-                host=network.HOST_ADDRESS,
-                keypoint_sub_port=ports.KEYPOINT_STREAM_PORT,
-                moving_average_limit=3,
+        if self.laterality in [Laterality.RIGHT, Laterality.BIMANUAL]:
+            self.transforms.append(
+                SharedComponentRegistry.get_transform_config(
+                    hand_side=robots.RIGHT,
+                    host=network.HOST_ADDRESS,
+                    keypoint_sub_port=ports.KEYPOINT_STREAM_PORT,
+                    moving_average_limit=3,
+                )
             )
-        )
+
+        if self.laterality in [Laterality.LEFT, Laterality.BIMANUAL]:
+            self.transforms.append(
+                SharedComponentRegistry.get_transform_config(
+                    hand_side=robots.LEFT,
+                    host=network.HOST_ADDRESS,
+                    keypoint_sub_port=ports.KEYPOINT_STREAM_PORT,
+                    moving_average_limit=3,
+                )
+            )
 
         self.visualizers = []
 
-        if self.laterality == Laterality.LEFT:
-            identifier = robots.ROBOT_IDENTIFIER_LEFT_OPENARM
-            log_prefix = "openarm_left"
-            transform_port = ports.LEFT_KEYPOINT_TRANSFORM_PORT
-        else: # if self.laterality == Laterality.RIGHT:
-            identifier = robots.ROBOT_IDENTIFIER_RIGHT_OPENARM
-            log_prefix = "openarm_right"
-            transform_port = ports.KEYPOINT_TRANSFORM_PORT
-
+        # Robot and Robot Gripper Configurations
         self.robots = []
-        self.robots.append(
-            OpenArmRobotCfg(
-                host=network.HOST_ADDRESS,
-                laterality=self.laterality,
-                endeff_publish_port=ports.OPENARM_ENDEFF_PUBLISH_PORT,
-                endeff_subscribe_port=ports.OPENARM_ENDEFF_SUBSCRIBE_PORT,
-                reset_subscribe_port=ports.OPENARM_RESET_SUBSCRIBE_PORT,
-                home_subscribe_port=ports.OPENARM_HOME_SUBSCRIBE_PORT,
-                state_publish_port=ports.OPENARM_STATE_PUBLISH_PORT,
-                teleoperation_state_port=ports.OPENARM_TELEOPERATION_STATE_PORT,
-                recorder_config={
-                    "robot_identifier": identifier,
-                    "recorded_data": [
-                        robots.RECORDED_DATA_JOINT_STATES,
-                        robots.RECORDED_DATA_CARTESIAN_STATES,
-                        robots.RECORDED_DATA_COMMANDED_CARTESIAN_STATE,
-                        robots.RECORDED_DATA_JOINT_ANGLES_RAD,
-                    ],
-                },
+        if self.laterality in [Laterality.LEFT, Laterality.BIMANUAL]:
+            self.robots.append(
+                OpenArmRobotCfg(
+                    host=network.HOST_ADDRESS,
+                    laterality=Laterality.LEFT,
+                    endeff_publish_port=ports.OPENARM_LEFT_ENDEFF_PUBLISH_PORT,
+                    endeff_subscribe_port=ports.OPENARM_LEFT_ENDEFF_SUBSCRIBE_PORT,
+                    reset_subscribe_port=ports.OPENARM_LEFT_RESET_SUBSCRIBE_PORT,
+                    home_subscribe_port=ports.OPENARM_HOME_SUBSCRIBE_PORT,
+                    state_publish_port=ports.OPENARM_LEFT_STATE_PUBLISH_PORT,
+                    teleoperation_state_port=ports.OPENARM_TELEOPERATION_STATE_PORT,
+                    recorder_config={
+                        "robot_identifier": robots.ROBOT_IDENTIFIER_LEFT_OPENARM,
+                        "recorded_data": [
+                            robots.RECORDED_DATA_JOINT_STATES,
+                            robots.RECORDED_DATA_CARTESIAN_STATES,
+                            robots.RECORDED_DATA_COMMANDED_CARTESIAN_STATE,
+                            robots.RECORDED_DATA_JOINT_ANGLES_RAD,
+                        ],
+                    },
+                )
             )
-        )
-        self.robots.append(
-            OpenArmGripperRobotCfg(
-                host=network.HOST_ADDRESS,
-                laterality=self.laterality,
-                gripper_subscribe_port=robots.OPENARM_GRIPPER_SUBSCRIBE_PORT,
-                recorder_config={
-                    "robot_identifier": robots.ROBOT_IDENTIFIER_OPENARM_GRIPPER,
-                    "recorded_data": [],
-                },
+            self.robots.append(
+                OpenArmGripperRobotCfg(
+                    host=network.HOST_ADDRESS,
+                    laterality=Laterality.LEFT,
+                    gripper_subscribe_port=robots.OPENARM_LEFT_GRIPPER_SUBSCRIBE_PORT,
+                    recorder_config={
+                        "robot_identifier": robots.ROBOT_IDENTIFIER_OPENARM_GRIPPER,
+                        "recorded_data": [],
+                    },
+                )
             )
-        )
 
-        self.operators = []
-        self.operators.append(
-            OpenArmOperatorCfg(
-                host=network.HOST_ADDRESS,
-                transformed_keypoints_port=transform_port,
-                stream_configs={
-                    "host": network.HOST_ADDRESS,
-                    "port": ports.CONTROL_STREAM_PORT,
-                },
-                laterality=self.laterality,
-                stream_oculus=True,
-                endeff_publish_port=ports.OPENARM_ENDEFF_SUBSCRIBE_PORT,
-                endeff_subscribe_port=ports.OPENARM_ENDEFF_PUBLISH_PORT,
-                moving_average_limit=3,
-                arm_resolution_port=ports.KEYPOINT_STREAM_PORT,
-                use_filter=False,
-                teleoperation_state_port=ports.OPENARM_TELEOPERATION_STATE_PORT,
-                logging_config={
-                    "enabled": False,
-                    "log_dir": "logs",
-                    "log_poses": True,
-                    "log_prefix": log_prefix,
-                },
+        if self.laterality in [Laterality.RIGHT, Laterality.BIMANUAL]:
+            self.robots.append(
+                OpenArmRobotCfg(
+                    host=network.HOST_ADDRESS,
+                    laterality=Laterality.RIGHT,
+                    endeff_publish_port=ports.OPENARM_RIGHT_ENDEFF_PUBLISH_PORT,
+                    endeff_subscribe_port=ports.OPENARM_RIGHT_ENDEFF_SUBSCRIBE_PORT,
+                    reset_subscribe_port=ports.OPENARM_RIGHT_RESET_SUBSCRIBE_PORT,
+                    home_subscribe_port=ports.OPENARM_HOME_SUBSCRIBE_PORT,
+                    state_publish_port=ports.OPENARM_RIGHT_STATE_PUBLISH_PORT,
+                    teleoperation_state_port=ports.OPENARM_TELEOPERATION_STATE_PORT,
+                    recorder_config={
+                        "robot_identifier": robots.ROBOT_IDENTIFIER_RIGHT_OPENARM,
+                        "recorded_data": [
+                            robots.RECORDED_DATA_JOINT_STATES,
+                            robots.RECORDED_DATA_CARTESIAN_STATES,
+                            robots.RECORDED_DATA_COMMANDED_CARTESIAN_STATE,
+                            robots.RECORDED_DATA_JOINT_ANGLES_RAD,
+                        ],
+                    },
+                )
             )
-        )
+            self.robots.append(
+                OpenArmGripperRobotCfg(
+                    host=network.HOST_ADDRESS,
+                    laterality=Laterality.RIGHT,
+                    gripper_subscribe_port=robots.OPENARM_RIGHT_GRIPPER_SUBSCRIBE_PORT,
+                    recorder_config={
+                        "robot_identifier": robots.ROBOT_IDENTIFIER_OPENARM_GRIPPER,
+                        "recorded_data": [],
+                    },
+                )
+            )
+
+        # Open Arm Robot Operator Configurations
+        self.operators = []
+        if self.laterality in [Laterality.LEFT, Laterality.BIMANUAL]:
+            self.operators.append(
+                OpenArmOperatorCfg(
+                    host=network.HOST_ADDRESS,
+                    transformed_keypoints_port=ports.LEFT_KEYPOINT_TRANSFORM_PORT,
+                    stream_configs={
+                        "host": network.HOST_ADDRESS,
+                        "port": ports.CONTROL_STREAM_PORT,
+                    },
+                    laterality=Laterality.LEFT,
+                    stream_oculus=True,
+                    endeff_publish_port=ports.OPENARM_LEFT_ENDEFF_SUBSCRIBE_PORT,
+                    endeff_subscribe_port=ports.OPENARM_LEFT_ENDEFF_PUBLISH_PORT,
+                    moving_average_limit=3,
+                    arm_resolution_port=ports.KEYPOINT_STREAM_PORT,
+                    use_filter=False,
+                    teleoperation_state_port=ports.OPENARM_TELEOPERATION_STATE_PORT,
+                    logging_config={
+                        "enabled": False,
+                        "log_dir": "logs",
+                        "log_poses": True,
+                        "log_prefix": "openarm_left",
+                    },
+                )
+            )
+        if self.laterality in [Laterality.RIGHT, Laterality.BIMANUAL]:
+            self.operators.append(
+                OpenArmOperatorCfg(
+                    host=network.HOST_ADDRESS,
+                    transformed_keypoints_port=ports.KEYPOINT_TRANSFORM_PORT,
+                    stream_configs={
+                        "host": network.HOST_ADDRESS,
+                        "port": ports.CONTROL_STREAM_PORT,
+                    },
+                    laterality=Laterality.RIGHT,
+                    stream_oculus=True,
+                    endeff_publish_port=ports.OPENARM_RIGHT_ENDEFF_SUBSCRIBE_PORT,
+                    endeff_subscribe_port=ports.OPENARM_RIGHT_ENDEFF_PUBLISH_PORT,
+                    moving_average_limit=3,
+                    arm_resolution_port=ports.KEYPOINT_STREAM_PORT,
+                    use_filter=False,
+                    teleoperation_state_port=ports.OPENARM_TELEOPERATION_STATE_PORT,
+                    logging_config={
+                        "enabled": False,
+                        "log_dir": "logs",
+                        "log_poses": True,
+                        "log_prefix": "openarm_right",
+                    },
+                )
+            )
 
     def build(self):
         return {

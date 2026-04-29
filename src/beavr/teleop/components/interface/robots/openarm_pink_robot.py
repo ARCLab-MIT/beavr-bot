@@ -513,11 +513,11 @@ class OpenArmPinkRobot(RobotWrapper):
             self._handshake_coordinator.start_server(
                 subscriber_id=self._handshake_server_id,
                 bind_host="*",
-                port=robots.TELEOP_HANDSHAKE_PORT + 10,
+                port=robots.TELEOP_HANDSHAKE_PORT + (10 if self._laterality == Laterality.LEFT else 9),  # Unique ports
             )
             logger.info(f"Handshake server started for {self.name}")
         except Exception as e:
-            logger.error(f"Failed to start handshake server on port {robots.TELEOP_HANDSHAKE_PORT + 10}: {e}")
+            logger.error(f"Failed to start handshake server on port {robots.TELEOP_HANDSHAKE_PORT + (10 if self._laterality == Laterality.LEFT else 9)}: {e}")
             logger.info("Attempting to continue without handshake server...")
             # Set a flag to indicate handshake is not available
             self._handshake_available = False

@@ -227,9 +227,11 @@ ROBOT_IDENTIFIER_OPENARM_GRIPPER = "openarm_gripper"
 # Port mappings for OpenArm components
 # -----------------------------------------------------------------------------
 # Operator publishes gripper commands on this port
-OPENARM_GRIPPER_CMD_PORT = 10046
+OPENARM_LEFT_GRIPPER_CMD_PORT = 10046
+OPENARM_RIGHT_GRIPPER_CMD_PORT = 10047
 # OpenArmGripperRobot subscribes to gripper commands on this port
-OPENARM_GRIPPER_SUBSCRIBE_PORT = 10046
+OPENARM_LEFT_GRIPPER_SUBSCRIBE_PORT = 10046
+OPENARM_RIGHT_GRIPPER_SUBSCRIBE_PORT = 10047
 
 # -----------------------------------------------------------------------------
 # VR display constants

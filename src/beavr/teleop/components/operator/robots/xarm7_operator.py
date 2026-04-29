@@ -156,11 +156,13 @@ class XArmOperator(Operator):
             "hand_coords": self._hand_coords_subscriber,
         }
 
+        gripper_publish_port = robots.OPENARM_LEFT_GRIPPER_CMD_PORT if hand_side == robots.LEFT else robots.OPENARM_RIGHT_GRIPPER_CMD_PORT
+
         # Using the centralized publisher manager
         self._publisher_manager = ZMQPublisherManager.get_instance(self._context)
         self._publisher_host = host
         self._publisher_port = endeff_publish_port
-        self._gripper_publish_port = robots.OPENARM_GRIPPER_CMD_PORT
+        self._gripper_publish_port = gripper_publish_port
         self._gripper_width = robots.OPENARM_GRIPPER_MIN_WIDTH_M
         self._first_gripper_publish = True
 
