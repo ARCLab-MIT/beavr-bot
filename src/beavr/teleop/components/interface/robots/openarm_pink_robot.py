@@ -36,7 +36,7 @@ logger.setLevel(logging.ERROR) #logging.DEBUG)
 # Pink Configuration Constants
 # ============================================================================
 # Task costs for FrameTask (end-effector positioning)
-PINK_POSITION_COST = 0.5  # [cost] / [m] - aggressive positioning priority
+PINK_POSITION_COST = 1.0  # [cost] / [m] - aggressive positioning priority
 PINK_ORIENTATION_COST = 1.0  # [cost] / [rad] - low cost to enable orientation tracking
 PINK_LM_DAMPING = 0.01  # Levenberg-Marquardt damping - very low for faster convergence
 
@@ -44,10 +44,10 @@ PINK_LM_DAMPING = 0.01  # Levenberg-Marquardt damping - very low for faster conv
 PINK_POSTURE_COST = 1e-1  # [cost] / [rad] - reduced to minimize interference with frame task
 
 # IK velocity integration time step
-PINK_IK_DT = 0.01  # seconds - smaller steps for stability
+PINK_IK_DT = 0.03  # seconds - smaller steps for stability
 
 # Iterative IK parameters
-PINK_MAX_ITERATIONS = 20  # max IK iterations per call
+PINK_MAX_ITERATIONS = 10  # max IK iterations per call
 PINK_POS_TOLERANCE = 0.01  # position tolerance in meters
 
 # Best-effort joint limits (radians)
@@ -62,12 +62,12 @@ class PinkKinematics:
 
     def __init__(
         self,
-        joint_names=None,
-        ik_link_name="openarm_left_hand_tcp",
+        joint_names,
+        ik_link_name="",
         urdf_path=None,
     ):
         # Joint configuration
-        self.joint_names = joint_names or robots.OPENARM_LEFT_JOINT_NAMES
+        self.joint_names = joint_names
         self.ik_link_name = ik_link_name
         self.num_joints = len(self.joint_names)
         # openarm_description is a CMake-based ROS2 package, not compatible with robot_descriptions
@@ -104,31 +104,31 @@ class PinkKinematics:
                 self._robot_model.upperPositionLimit[:] = np.inf
 
             # Create Configuration with the full robot model
-            # pink will solve IK for all joints, but we'll extract only left arm joints later
+            # pink will solve IK for all joints, but we'll extract joints for only one arm later
             self._configuration = pink.Configuration(self._robot_model, self._robot_data, self._robot_wrapper.q0)
 
             # Build correct joint mapping: controller joint -> Pink model DOF index (idx_q)
-            # Map each joint from OPENARM_LEFT_JOINT_NAMES to its Pinocchio configuration index (idx_q)
-            left_joint_dof_indices = []
+            # Map each joint from joint_names to its Pinocchio configuration index (idx_q)
+            joint_dof_indices = []
             for joint_name in self.joint_names:
                 try:
                     # Get joint ID first, then look up joint object to find idx_q
                     joint_id = self._robot_model.getJointId(joint_name)
                     joint = self._robot_model.joints[joint_id]
                     idx_q = joint.idx_q
-                    left_joint_dof_indices.append(idx_q)
+                    joint_dof_indices.append(idx_q)
                 except Exception as e:
                     logger.error(f"[PinkKinematics]   ERROR: Failed to find Pink DOF index for '{joint_name}': {e}")
                     raise
 
-            self._left_joint_dof_indices = left_joint_dof_indices
+            self._joint_dof_indices = joint_dof_indices
 
-            if len(left_joint_dof_indices) != len(self.joint_names):
+            if len(joint_dof_indices) != len(self.joint_names):
                 logger.error(
-                    f"[PinkKinematics] Mismatch: Expected {len(self.joint_names)} left arm joints, "
-                    f"but found {len(left_joint_dof_indices)} in model"
+                    f"[PinkKinematics] Mismatch: Expected {len(self.joint_names)} arm joints, "
+                    f"but found {len(joint_dof_indices)} in model"
                 )
-                raise ValueError("Failed to map all left arm joints to Pink model")
+                raise ValueError("Failed to map all arm joints to Pink model")
 
             # Enable both position and orientation tasks with proper quaternion handling
             self._end_effector_task = FrameTask(
@@ -178,8 +178,8 @@ class PinkKinematics:
         if seed_state is not None:
             # Map seed_state (7 DOF) to full configuration (18 DOF)
             full_q = self._configuration.q.copy()
-            if hasattr(self, "_left_joint_dof_indices") and len(self._left_joint_dof_indices) >= len(seed_state):
-                for i, idx in enumerate(self._left_joint_dof_indices):
+            if hasattr(self, "_joint_dof_indices") and len(self._joint_dof_indices) >= len(seed_state):
+                for i, idx in enumerate(self._joint_dof_indices):
                     if i < len(seed_state):
                         full_q[idx] = seed_state[i]
                 # Update configuration using Pink's update() method
@@ -213,6 +213,9 @@ class PinkKinematics:
             [0.0, -1.0,  0.0],
             [0.0,  0.0, -1.0]
         ]
+        
+        # For left arm: pivot = np.array([0.00000000, 0.15349774, 0.08189955])
+        # For right arm, invert y axis
         pivot = np.array([0.00000000, 0.15349774, 0.08189955])
 
         position[2] = ((position[2] - pivot[2]) * (-1)) + pivot[2] # Invert Z with respect to starting position
@@ -277,10 +280,10 @@ class PinkKinematics:
                     logger.info(f"[Pink IK] Velocity vector (all {len(velocity)} DOF): {velocity}")
                     logger.info(f"[Pink IK] Max velocity: {max_velocity:.6f} rad/s")
 
-                    # Log what joints are being moved at the left arm DOF indices
-                    if hasattr(self, "_left_joint_dof_indices"):
-                        logger.info(f"[Pink IK] Left arm DOF indices: {self._left_joint_dof_indices}")
-                        for i, dof_idx in enumerate(self._left_joint_dof_indices):
+                    # Log what joints are being moved at the given arm DOF indices
+                    if hasattr(self, "_joint_dof_indices"):
+                        logger.info(f"[Pink IK] Arm DOF indices: {self._joint_dof_indices}")
+                        for i, dof_idx in enumerate(self._joint_dof_indices):
                             if dof_idx < len(velocity):
                                 vel = velocity[dof_idx]
                                 joint_name = self.joint_names[i]
@@ -312,9 +315,9 @@ class PinkKinematics:
             # Get joint angles and apply best-effort clamping
             full_joint_angles = self._configuration.q.copy()
 
-            # Extract only left arm joint angles
-            if hasattr(self, "_left_joint_dof_indices") and len(self._left_joint_dof_indices) > 0:
-                joint_angles = np.array([full_joint_angles[i] for i in self._left_joint_dof_indices])
+            # Extract only one side arm joint angles
+            if hasattr(self, "_joint_dof_indices") and len(self._joint_dof_indices) > 0:
+                joint_angles = np.array([full_joint_angles[i] for i in self._joint_dof_indices])
             else:
                 joint_angles = full_joint_angles
 
@@ -354,9 +357,9 @@ class PinkKinematics:
         try:
             # Map 7-DOF joint angles to full configuration (18 DOF)
             full_q = self._configuration.q.copy()
-            if hasattr(self, "_left_joint_dof_indices") and len(self._left_joint_dof_indices) >= len(joint_angles):
-                logger.debug(f"[Pink FK] Mapping {len(joint_angles)} DOF to indices {self._left_joint_dof_indices}")
-                for i, idx in enumerate(self._left_joint_dof_indices):
+            if hasattr(self, "_joint_dof_indices") and len(self._joint_dof_indices) >= len(joint_angles):
+                logger.debug(f"[Pink FK] Mapping {len(joint_angles)} DOF to indices {self._joint_dof_indices}")
+                for i, idx in enumerate(self._joint_dof_indices):
                     if i < len(joint_angles):
                         full_q[idx] = joint_angles[i]
                 logger.debug(f"[Pink FK] Full config after mapping: {full_q}")
@@ -443,14 +446,16 @@ class OpenArmPinkRobot(RobotWrapper):
         if laterality == Laterality.LEFT:
             ik_link_name="openarm_left_hand_tcp"
             command_topic_name = "/openarm_left_arm_forward_position_controller/commands"
+            joint_names = robots.OPENARM_LEFT_JOINT_NAMES
         else: # if laterality == Laterality.RIGHT:
             ik_link_name="openarm_right_hand_tcp"
             command_topic_name = "/openarm_right_arm_forward_position_controller/commands"
+            joint_names = robots.OPENARM_RIGHT_JOINT_NAMES
 
-        self._kinematics = PinkKinematics(ik_link_name=ik_link_name, urdf_path=urdf_path)
+        self._kinematics = PinkKinematics(joint_names=joint_names, ik_link_name=ik_link_name, urdf_path=urdf_path)
         logger.info("PinkKinematics created successfully")
 
-        self._controller = DexArmControl(command_topic_name=command_topic_name)
+        self._controller = DexArmControl(command_topic_name=command_topic_name, joint_names=joint_names)
 
         self._data_frequency = robots.VR_FREQ
         self._num_joints = len(robots.OPENARM_LEFT_JOINT_NAMES)
