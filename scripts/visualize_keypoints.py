@@ -2,12 +2,59 @@
 """Visualize logged VR keypoints data."""
 
 import argparse
+import glob
 import json
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
 from mpl_toolkits.mplot3d import Axes3D
+
+
+def load_json_file(filepath: Path):
+    """Load JSON data from file."""
+    try:
+        with open(filepath) as f:
+            return json.load(f)
+    except json.JSONDecodeError as e:
+        print(f"Warning: Invalid JSON in {filepath}: {e}")
+        return None
+    except Exception as e:
+        print(f"Warning: Error reading {filepath}: {e}")
+        return None
+
+
+def load_multiple_files(pattern: str, file_type: str = "keypoints"):
+    """Load and combine multiple JSON files matching a pattern."""
+    files = sorted(glob.glob(pattern))
+    if not files:
+        print(f"No files found matching: {pattern}")
+        return None
+
+    print(f"Loading {len(files)} files...")
+    combined_data = None
+
+    for filepath in files:
+        data = load_json_file(Path(filepath))
+        if data is None:
+            continue
+
+        if combined_data is None:
+            combined_data = data
+        else:
+            if file_type == "keypoints":
+                combined_data["frames"].extend(data.get("frames", []))
+            elif file_type == "raw":
+                combined_data["records"].extend(data.get("records", []))
+            combined_data["total_frames"] = len(combined_data.get("frames", combined_data.get("records", [])))
+
+    if combined_data is None:
+        print("No valid data found in any file")
+        return None
+
+    total = len(combined_data.get("frames", combined_data.get("records", [])))
+    print(f"Combined {total} total frames")
+    return combined_data
 
 
 def load_raw_vr_data(filepath: Path):
@@ -154,15 +201,24 @@ def visualize_transformed_data(data: dict, frame_idx: int = 0, animate: bool = F
     for frame in frames:
         kp = frame.get("keypoints", [])
         if kp:
-            all_keypoints.append(np.array(kp))
+            kp_array = np.array(kp)
+            if not np.any(np.isnan(kp_array)):
+                all_keypoints.append(kp_array)
         coord_frame = frame.get("coordinate_frame", {})
         origin = coord_frame.get("origin", [0, 0, 0])
-        all_origins.append(np.array(origin))
+        origin_array = np.array(origin)
+        if not np.any(np.isnan(origin_array)):
+            all_origins.append(origin_array)
 
     all_keypoints = np.vstack(all_keypoints) if all_keypoints else np.zeros((1, 3))
     all_origins = np.array(all_origins) if all_origins else np.zeros((1, 3))
 
     all_points = np.vstack([all_keypoints, all_origins])
+
+    # Filter out NaN and Inf values
+    valid_mask = np.all(np.isfinite(all_points), axis=1)
+    all_points = all_points[valid_mask] if np.any(valid_mask) else np.zeros((1, 3))
+
     x_min, x_max = all_points[:, 0].min(), all_points[:, 0].max()
     y_min, y_max = all_points[:, 1].min(), all_points[:, 1].max()
     z_min, z_max = all_points[:, 2].min(), all_points[:, 2].max()
@@ -269,24 +325,41 @@ def visualize_transformed_data(data: dict, frame_idx: int = 0, animate: bool = F
 
 def main():
     parser = argparse.ArgumentParser(description="Visualize logged VR keypoints")
-    parser.add_argument("file", type=str, help="Path to JSON file")
+    parser.add_argument(
+        "file",
+        type=str,
+        help="Path to JSON file or glob pattern (e.g., 'data/keypoint_logs/keypoints_left_*.json')",
+    )
     parser.add_argument("--frame", "-f", type=int, default=0, help="Frame index to visualize")
     parser.add_argument("--animate", "-a", action="store_true", help="Animate through all frames")
+    parser.add_argument(
+        "--combine", "-c", action="store_true", help="Combine multiple files matching the pattern"
+    )
     args = parser.parse_args()
 
-    filepath = Path(args.file)
-    if not filepath.exists():
-        print(f"File not found: {filepath}")
-        return
+    if args.combine or "*" in args.file:
+        if "keypoints" in args.file:
+            data = load_multiple_files(args.file, file_type="keypoints")
+        elif "raw_vr_data" in args.file:
+            data = load_multiple_files(args.file, file_type="raw")
+        else:
+            data = load_multiple_files(args.file, file_type="keypoints")
 
-    data = json.load(open(filepath))
+        if data is None:
+            return
+    else:
+        filepath = Path(args.file)
+        if not filepath.exists():
+            print(f"File not found: {filepath}")
+            return
+        data = load_json_file(filepath)
 
     # Detect file type based on content
-    if "records" in data and "raw_bytes" in data.get("records", [{}])[0]:
-        print("Visualizing raw VR data...")
+    if "records" in data and len(data.get("records", [])) > 0:
+        print(f"Visualizing raw VR data ({len(data['records'])} frames)...")
         visualize_raw_vr_data(data, args.frame, args.animate)
     elif "frames" in data:
-        print("Visualizing transformed keypoints...")
+        print(f"Visualizing transformed keypoints ({len(data['frames'])} frames)...")
         visualize_transformed_data(data, args.frame, args.animate)
     else:
         print("Unknown file format")
