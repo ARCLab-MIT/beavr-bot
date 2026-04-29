@@ -207,6 +207,8 @@ class PinkKinematics:
         # Update FrameTask target
         target_transform = self._end_effector_task.transform_target_to_world
 
+        # TODO: These static transformations should be applied in the 
+        # xarm operator, at latest when the right arm is integrated 
         delta_rot = [
             [1.0,  0.0,  0.0],
             [0.0, -1.0,  0.0],
