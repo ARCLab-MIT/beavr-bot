@@ -13,7 +13,6 @@ from typing import Any
 
 from beavr.teleop.common.configs.loader import Laterality, log_laterality_configuration
 from beavr.teleop.components.interface.controller.robots.openarm_gripper_control import OpenArmGripperRobot
-from beavr.teleop.components.interface.robots.openarm_robot import OpenArmRobot
 from beavr.teleop.components.interface.robots.openarm_pink_robot import OpenArmPinkRobot
 from beavr.teleop.configs.constants import network, ports, robots
 from beavr.teleop.configs.robots import TeleopRobotConfig
