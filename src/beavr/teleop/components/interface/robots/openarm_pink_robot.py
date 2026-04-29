@@ -28,7 +28,7 @@ from beavr.teleop.components.operator.operator_types import CartesianTarget
 from beavr.teleop.configs.constants import robots
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.ERROR) #logging.DEBUG)
+logger.setLevel(logging.ERROR)
 
 
 # ============================================================================
@@ -72,8 +72,6 @@ class PinkKinematics:
         # openarm_description is a CMake-based ROS2 package, not compatible with robot_descriptions
         # Use direct URDF loading instead
         self._load_robot_from_urdf(urdf_path=urdf_path)
-
-        self._frame_id = 0
 
     def _load_robot_from_urdf(self, urdf_path=None):
 
@@ -251,24 +249,6 @@ class PinkKinematics:
                         f"error={position_error_norm:.4f}m"
                     )
 
-                # Starting with the second iteration, check for convergence based on error change
-                #if position_error_norm_old is not None and configuration_q_old is not None:
-                #    # Break if the error does not change by more than 1mm (0.001m)
-                #    if abs(position_error_norm - position_error_norm_old) < 0.001:
-                #        #logging.getLogger("movePerf").log(logging.DEBUG, f"Converged because of no significant error change ({abs(position_error_norm - position_error_norm_old)})")
-                #        break
-
-                #    # If error incresed, use previous configuration and break
-                #    if position_error_norm_old < position_error_norm:
-                #        #logging.getLogger("movePerf").log(logging.DEBUG, f"Converged because of increasing error ({position_error_norm:.4f}). Using previous configuration")
-                #        self._configuration.update(configuration_q_old)
-                #        break
-
-
-                #if position_error_norm < PINK_POS_TOLERANCE: 
-                #    logger.info(f"[Pink IK] Converged at iteration {iteration + 1}, error={position_error_norm:.4f}m")
-                #    break
-
                 # Compute velocity
                 velocity = pink.solve_ik(self._configuration, self._tasks, dt, solver=self._solver, safety_break=False)
                 max_velocity = np.max(np.abs(velocity))
@@ -327,8 +307,6 @@ class PinkKinematics:
             logger.info(
                 f"[Pink IK] SUCCESS: computed {len(joint_angles)} joint angles in {elapsed * 1000:.2f}ms: {joint_angles}"
             )
-
-            self._frame_id += 1
 
             return joint_angles.tolist()
 
@@ -776,43 +754,35 @@ class OpenArmPinkRobot(RobotWrapper):
                 )
                 new_cartesian_timestamp = cmd.timestamp_s
 
-                position_changed = self._cartesian_positions_close(
-                    new_cartesian_position, self._latest_commanded_cartesian_position
-                )
+                logger.debug("[ROBOT] Cartesian position changed, computing IK")
+                position = new_cartesian_position[:3]
+                orientation = new_cartesian_position[3:7]
 
-                position_changed = False
-                if self._latest_commanded_cartesian_position is None or not position_changed:
-                    logger.debug("[ROBOT] Cartesian position changed, computing IK")
-                    position = new_cartesian_position[:3]
-                    orientation = new_cartesian_position[3:7]
+                target_pos = new_cartesian_position.copy()
+                target_time = new_cartesian_timestamp
 
-                    target_pos = new_cartesian_position.copy()
-                    target_time = new_cartesian_timestamp
+                # Get current joint positions as seed for IK
+                seed_joints = self._controller.get_arm_position()
 
-                    # Get current joint positions as seed for IK
-                    seed_joints = self._controller.get_arm_position()
+                # Synchronous IK call with seed state (if available)
+                joint_angles = self._kinematics.compute_ik(position, orientation, seed_state=seed_joints)
 
-                    # Synchronous IK call with seed state (if available)
-                    joint_angles = self._kinematics.compute_ik(position, orientation, seed_state=seed_joints)
+                if joint_angles is not None:
+                    self._ik_completed_history[self._history_index] = True
+                    completion_time = time.time()
+                    self._ik_complete_timestamps.append(
+                        completion_time - self._start_time if self._start_time else completion_time
+                    )
 
-                    if joint_angles is not None:
-                        self._ik_completed_history[self._history_index] = True
-                        completion_time = time.time()
-                        self._ik_complete_timestamps.append(
-                            completion_time - self._start_time if self._start_time else completion_time
-                        )
+                    # Update joint angles
+                    with self._joint_angles_lock:
+                        self._latest_joint_angles = joint_angles
+                        self._latest_commanded_cartesian_position = target_pos
+                        self._latest_commanded_cartesian_timestamp = target_time
 
-                        # Update joint angles
-                        with self._joint_angles_lock:
-                            self._latest_joint_angles = joint_angles
-                            self._latest_commanded_cartesian_position = target_pos
-                            self._latest_commanded_cartesian_timestamp = target_time
-
-                        logger.debug(f"[ROBOT] IK completed: {joint_angles}")
-                    else:
-                        logger.warning("[ROBOT] IK returned None, keeping previous joint angles")
+                    logger.debug(f"[ROBOT] IK completed: {joint_angles}")
                 else:
-                    logger.debug("[ROBOT] Cartesian position unchanged, using cached joint angles")
+                    logger.warning("[ROBOT] IK returned None, keeping previous joint angles")
             else:
                 logger.debug("[ROBOT] No cartesian command received")
 
