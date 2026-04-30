@@ -28,7 +28,7 @@ from beavr.teleop.components.operator.operator_types import CartesianTarget, Gri
 from beavr.teleop.configs.constants import robots
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.ERROR) #.DEBUG)
+logger.setLevel(logging.ERROR)
 
 
 class XArmOperator(Operator):
@@ -185,14 +185,6 @@ class XArmOperator(Operator):
         self.hand_init_t: Optional[np.ndarray] = None
         self.last_valid_hand_frame: Optional[np.ndarray] = None  # Cache for last received hand frame
 
-        # Mock mode for testing
-        self.use_mock_hand_frames: bool = False
-        self.mock_hand_frames: list = []
-        self.mock_hand_frame_index: int = 0
-
-        # Set default mock frames: continuous movement from y=0 to y=0.3 over 100 frames
-        #self._generate_default_mock_frames()
-
         # Final transformation
         self.final_translation = final_translation
 
@@ -219,7 +211,7 @@ class XArmOperator(Operator):
 
         self.logging_config = {"enabled": True, "filename": "openarm"}
 
-        self.logging_enabled = False #self.logging_config.get("enabled", False)
+        self.logging_enabled = False  # self.logging_config.get("enabled", False)
         self.pose_logger: Optional[PoseLogger] = None
 
         if self.logging_enabled:
@@ -272,79 +264,21 @@ class XArmOperator(Operator):
         """Returns whether the operator is controlling a real robot (placeholder)."""
         return self.real
 
-    def _generate_default_mock_frames(self):
-        """
-        Generate default mock frames: continuous movement from y=0 to y=0.3 over 100 frames.
-        The frames use identity rotation with translation in y-axis only.
-        """
-        self.mock_hand_frames = []
-        for i in range(10):
-            # Frame format: [translation, x_axis, y_axis, z_axis]
-            frame = [
-                [0.0, 0.0, 0.0],  # Translation: moves in y-axis
-                [1.0, 0.0, 0.0],  # X-axis identity
-                [0.0, 1.0, 0.0],  # Y-axis identity
-                [0.0, 0.0, 1.0],  # Z-axis identity
-            ]
-            self.mock_hand_frames.append(frame)
-        for i in range(200):
-            y_position = i / 199.0  # Linear interpolation from 0 to 0.3
-            # Frame format: [translation, x_axis, y_axis, z_axis]
-            frame = [
-                [0.0, -y_position * 0.3, 0.0],  # Translation: moves in y-axis
-                [1.0, 0.0, 0.0],  # X-axis identity
-                [0.0, 1.0, 0.0],  # Y-axis identity
-                [0.0, 0.0, 1.0],  # Z-axis identity
-            ]
-            self.mock_hand_frames.append(frame)
-        logger.info(f"Generated {len(self.mock_hand_frames)} default mock frames (y: 0→0.3)")
-
     def _contains_nan(self, arr: np.ndarray) -> bool:
         """Check if numpy array contains any NaN values."""
         if arr is None:
             return True
         return bool(np.any(np.isnan(arr)))
 
-    def set_mock_hand_frames(self, frames: list):
-        """
-        Set a list of mock hand frames for testing purposes.
-        When set, the operator will iterate through these frames instead of reading from the subscriber.
-
-        Args:
-            frames: List of 4x3 numpy arrays or tuples representing hand frames
-        """
-        self.mock_hand_frames = frames
-        self.mock_hand_frame_index = 0
-        self.use_mock_hand_frames = True
-        logger.info(f"Set mock hand frames mode with {len(frames)} frames")
-
     def _get_hand_frame(self) -> Optional[np.ndarray]:
         """
-        Gets the latest hand frame from the ZMQ subscriber or mock data.
+        Gets the latest hand frame from the ZMQ subscriber.
         Uses a cached value if no new data is available immediately.
 
         Returns:
             A 4x3 numpy array representing the hand frame ([t; R_col1; R_col2; R_col3]),
             or None if no valid frame is available.
         """
-        if self.use_mock_hand_frames and self.mock_hand_frames:
-            # Mock mode: iterate through predefined frames
-            if self.mock_hand_frame_index < len(self.mock_hand_frames):
-                frame_data = self.mock_hand_frames[self.mock_hand_frame_index]
-                self.mock_hand_frame_index += 1
-                logger.debug(
-                    f"Mock mode: returning frame {self.mock_hand_frame_index - 1}/{len(self.mock_hand_frames)}"
-                )
-                return (
-                    np.array(frame_data, dtype=np.float64).reshape(4, 3) if isinstance(frame_data, list) else frame_data
-                )
-            else:
-                logger.debug("Mock mode: reached end of frame list, returning last frame")
-                return (
-                    np.array(self.mock_hand_frames[-1], dtype=np.float64).reshape(4, 3)
-                    if isinstance(self.mock_hand_frames[-1], list)
-                    else self.mock_hand_frames[-1]
-                )
 
         # Normal mode: Try to get new data without blocking
         data = self._arm_transformed_keypoint_subscriber.recv_keypoints()
@@ -755,7 +689,6 @@ class XArmOperator(Operator):
             R_init = self.hand_init_h[:3, :3]
             R_cur = self.hand_moving_h[:3, :3]
             R_rel_world = R_cur @ R_init.T
-
 
             h_ht_hi = np.eye(4)
             h_ht_hi[:3, :3] = R_rel_world

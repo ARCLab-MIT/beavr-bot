@@ -340,6 +340,57 @@ class OculusVRHandDetector(Component):
         except Exception as e:
             logger.error(f"Error saving raw VR data for {hand_side}: {e}")
 
+        # Raw keypoint recording for debugging
+        self.raw_keypoint_records = {hand_side: [] for hand_side in self.hand_ports}
+        self.raw_keypoint_log_files = {}
+        raw_log_dir = Path("data/keypoint_logs")
+        raw_log_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        for hand_side in self.hand_ports:
+            self.raw_keypoint_log_files[hand_side] = raw_log_dir / f"raw_vr_data_{hand_side}_{timestamp}.json"
+
+    def _log_raw_vr_data(
+        self,
+        hand_side: str,
+        raw_data: bytes,
+        processed_keypoints: list,
+        rotated_keypoints: list | None = None,
+    ):
+        """Record raw VR data for debugging purposes."""
+        if hand_side not in self.raw_keypoint_log_files:
+            return
+
+        record = {
+            "timestamp": time.time(),
+            "raw_bytes": raw_data.decode().strip() if raw_data else None,
+            "processed_keypoints": processed_keypoints,
+            "keypoints_shape": len(processed_keypoints),
+            "rotated_keypoints": rotated_keypoints if rotated_keypoints is not None else [],
+        }
+        self.raw_keypoint_records[hand_side].append(record)
+
+        # Auto-save every 500 records
+        if len(self.raw_keypoint_records[hand_side]) % 500 == 0:
+            self._save_raw_vr_data(hand_side)
+
+    def _save_raw_vr_data(self, hand_side: str):
+        """Save raw VR data records to JSON file."""
+        if hand_side not in self.raw_keypoint_log_files or len(self.raw_keypoint_records[hand_side]) == 0:
+            return
+
+        try:
+            data = {
+                "hand_side": hand_side,
+                "total_records": len(self.raw_keypoint_records[hand_side]),
+                "records": self.raw_keypoint_records[hand_side].copy(),
+            }
+            with open(self.raw_keypoint_log_files[hand_side], "w") as f:
+                json.dump(data, f, indent=2)
+            logger.debug(f"Saved {len(self.raw_keypoint_records[hand_side])} raw VR records for {hand_side}")
+            self.raw_keypoint_records[hand_side].clear()
+        except Exception as e:
+            logger.error(f"Error saving raw VR data for {hand_side}: {e}")
+
     def _configure_hand_ports(self, right_hand_port: Optional[int], left_hand_port: Optional[int]):
         """Configure hand ports based on the hand configuration."""
         self.hand_ports = {}
