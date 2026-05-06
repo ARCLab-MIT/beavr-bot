@@ -119,7 +119,6 @@ class PinkKinematics:
             logger.info(f"[Startup] Joint names: {model.names}")
             self._robot_model = model
             self._robot_data = model.createData()
-            self._robot_wrapper = None
 
             # Disable joint limit checking by setting limits to very large values
             if hasattr(self._robot_model, "lowerPositionLimit"):
@@ -546,7 +545,6 @@ class OpenArmPinkRobot(RobotWrapper):
             self._handshake_available = False
 
         self._is_homed = False
-        self._first_ik_completed = False
 
     def _cartesian_positions_close(self, pos1, pos2):
         """Check if two cartesian positions are close within tolerance"""
