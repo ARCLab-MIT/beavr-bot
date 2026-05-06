@@ -149,7 +149,7 @@ class XArm7Robot(RobotWrapper):
         self._handshake_coordinator.start_server(
             subscriber_id=self._handshake_server_id,
             bind_host="*",
-            port=robots.TELEOP_HANDSHAKE_PORT + (1 if self._is_right_arm else 2),  # Unique ports
+            port=robots.TELEOP_HANDSHAKE_PORT + (20 if self._is_right_arm else 21),  # Unique ports
         )
         logger.info(f"Handshake server started for {self.name}")
 

@@ -12,6 +12,7 @@ import qpsolvers
 from pink.tasks import DampingTask, FrameTask, PostureTask
 from scipy.spatial.transform import Rotation
 
+from beavr.teleop.common.configs.loader import Laterality 
 from beavr.teleop.common.network.handshake import HandshakeCoordinator
 from beavr.teleop.common.network.publisher import ZMQPublisherManager
 from beavr.teleop.common.network.subscriber import ZMQSubscriber
@@ -35,19 +36,20 @@ logger.setLevel(logging.ERROR)
 # Pink Configuration Constants
 # ============================================================================
 # Task costs for FrameTask (end-effector positioning)
-PINK_POSITION_COST = 0.5  # [cost] / [m] - aggressive positioning priority
-PINK_ORIENTATION_COST = 1.0  # [cost] / [rad] - low cost to enable orientation tracking
-PINK_LM_DAMPING = 0.01  # Levenberg-Marquardt damping - very low for faster convergence
+PINK_POSITION_COST = 1.0  # [cost] / [m] - aggressive positioning priority
+PINK_ORIENTATION_COST = 0.5  # [cost] / [rad] - low cost to enable orientation tracking
+PINK_LM_DAMPING = 0.1  # Levenberg-Marquardt damping - very low for faster convergence
 
 # Posture task for joint regularization
-PINK_POSTURE_COST = 1e-1  # [cost] / [rad] - reduced to minimize interference with frame task
+PINK_POSTURE_COST = 0.1 # [cost] / [rad] - reduced to minimize interference with frame task
 
 # IK velocity integration time step
 PINK_IK_DT = 0.01  # seconds - smaller steps for stability
 
 # Iterative IK parameters
-PINK_MAX_ITERATIONS = 20  # max IK iterations per call
+PINK_MAX_ITERATIONS = 3  # max IK iterations per call
 PINK_POS_TOLERANCE = 0.01  # position tolerance in meters
+PINK_ORIENTATION_TOLERACNE = 0.0174533 # orientation tolerance (1 degree)
 
 # Best-effort joint limits (radians)
 PINK_JOINT_LIMIT_RANGE = np.pi  # +/- π for clamping
@@ -61,12 +63,12 @@ class PinkKinematics:
 
     def __init__(
         self,
-        joint_names=None,
-        ik_link_name="openarm_left_hand_tcp",
+        joint_names,
+        ik_link_name="",
         urdf_path=None,
     ):
         # Joint configuration
-        self.joint_names = joint_names or robots.OPENARM_LEFT_JOINT_NAMES
+        self.joint_names = joint_names
         self.ik_link_name = ik_link_name
         self.num_joints = len(self.joint_names)
         # openarm_description is a CMake-based ROS2 package, not compatible with robot_descriptions
@@ -101,31 +103,31 @@ class PinkKinematics:
                 self._robot_model.upperPositionLimit[:] = np.inf
 
             # Create Configuration with the full robot model
-            # pink will solve IK for all joints, but we'll extract only left arm joints later
+            # pink will solve IK for all joints, but we'll extract joints for only one arm later
             self._configuration = pink.Configuration(self._robot_model, self._robot_data, self._robot_wrapper.q0)
 
             # Build correct joint mapping: controller joint -> Pink model DOF index (idx_q)
-            # Map each joint from OPENARM_LEFT_JOINT_NAMES to its Pinocchio configuration index (idx_q)
-            left_joint_dof_indices = []
+            # Map each joint from joint_names to its Pinocchio configuration index (idx_q)
+            joint_dof_indices = []
             for joint_name in self.joint_names:
                 try:
                     # Get joint ID first, then look up joint object to find idx_q
                     joint_id = self._robot_model.getJointId(joint_name)
                     joint = self._robot_model.joints[joint_id]
                     idx_q = joint.idx_q
-                    left_joint_dof_indices.append(idx_q)
+                    joint_dof_indices.append(idx_q)
                 except Exception as e:
                     logger.error(f"[PinkKinematics]   ERROR: Failed to find Pink DOF index for '{joint_name}': {e}")
                     raise
 
-            self._left_joint_dof_indices = left_joint_dof_indices
+            self._joint_dof_indices = joint_dof_indices
 
-            if len(left_joint_dof_indices) != len(self.joint_names):
+            if len(joint_dof_indices) != len(self.joint_names):
                 logger.error(
-                    f"[PinkKinematics] Mismatch: Expected {len(self.joint_names)} left arm joints, "
-                    f"but found {len(left_joint_dof_indices)} in model"
+                    f"[PinkKinematics] Mismatch: Expected {len(self.joint_names)} arm joints, "
+                    f"but found {len(joint_dof_indices)} in model"
                 )
-                raise ValueError("Failed to map all left arm joints to Pink model")
+                raise ValueError("Failed to map all arm joints to Pink model")
 
             # Enable both position and orientation tasks with proper quaternion handling
             self._end_effector_task = FrameTask(
@@ -154,6 +156,12 @@ class PinkKinematics:
         except Exception as e:
             logger.error(f"[PinkKinematics] Failed to load robot from URDF: {e}", exc_info=True)
             raise
+    
+    def _rotation_error_angle(self, R1, R2):
+        R_err = R1.T @ R2
+        value = (np.trace(R_err) - 1) / 2
+        value = np.clip(value, -1.0, 1.0)  # numerical safety
+        return np.arccos(value)
 
     def compute_ik(self, position, orientation_quat, seed_state=None) -> Optional[List[float]]:
         """
@@ -175,8 +183,8 @@ class PinkKinematics:
         if seed_state is not None:
             # Map seed_state (7 DOF) to full configuration (18 DOF)
             full_q = self._configuration.q.copy()
-            if hasattr(self, "_left_joint_dof_indices") and len(self._left_joint_dof_indices) >= len(seed_state):
-                for i, idx in enumerate(self._left_joint_dof_indices):
+            if hasattr(self, "_joint_dof_indices") and len(self._joint_dof_indices) >= len(seed_state):
+                for i, idx in enumerate(self._joint_dof_indices):
                     if i < len(seed_state):
                         full_q[idx] = seed_state[i]
                 # Update configuration using Pink's update() method
@@ -190,7 +198,7 @@ class PinkKinematics:
             logger.debug(f"[Pink IK] No seed state provided, using current config")
 
         # Usually, scalar-last order (x, y, z, w) - https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.transform.Rotation.from_quat.html
-        r = Rotation.from_quat(orientation_quat, scalar_first=True)
+        r = Rotation.from_quat(orientation_quat)
         rotation_matrix = r.as_matrix()
 
         # Validate rotation matrix
@@ -205,19 +213,6 @@ class PinkKinematics:
         # Update FrameTask target
         target_transform = self._end_effector_task.transform_target_to_world
 
-        # TODO: These static transformations should be applied in the 
-        # xarm operator, at latest when the right arm is integrated 
-        delta_rot = [
-            [1.0,  0.0,  0.0],
-            [0.0, -1.0,  0.0],
-            [0.0,  0.0, -1.0]
-        ]
-        pivot = np.array([0.00000000, 0.15349774, 0.08189955])
-
-        position[2] = ((position[2] - pivot[2]) * (-1)) + pivot[2] # Invert Z with respect to starting position
-        position = Rotation.from_euler('z', -90, degrees=True).apply(position - pivot) + pivot 
-        rotation_matrix = delta_rot @ rotation_matrix
-
         target_transform.translation[:] = position
         target_transform.rotation[:] = rotation_matrix
         logger.debug(f"[Pink IK] Target transform updated")
@@ -230,6 +225,7 @@ class PinkKinematics:
             logger.debug(f"[Pink IK] Starting iterative IK with max iterations={PINK_MAX_ITERATIONS}")
 
             position_error_norm_old = None
+            orientation_error_old = None
             configuration_q_old = None
 
             # Iterative IK loop
@@ -240,6 +236,7 @@ class PinkKinematics:
                 current_pose = self._configuration.get_transform_frame_to_world(self.ik_link_name)
                 position_error = np.array(target_transform.translation) - np.array(current_pose.translation)
                 position_error_norm = np.linalg.norm(position_error)
+                orientation_error = self._rotation_error_angle(target_transform.rotation, current_pose.rotation)
 
                 if iteration % 5 == 0:  # Log every 5 iterations
                     logger.info(
@@ -248,6 +245,23 @@ class PinkKinematics:
                         f"target=({target_transform.translation[0]:.4f},{target_transform.translation[1]:.4f},{target_transform.translation[2]:.4f}), "
                         f"error={position_error_norm:.4f}m"
                     )
+
+                # Starting with the second iteration, check for convergence based on error change
+                if position_error_norm_old is not None and configuration_q_old is not None:
+                    # Break if the error does not change by more than 1mm (0.001m)
+                    if abs(position_error_norm - position_error_norm_old) < 0.001 and abs(orientation_error - orientation_error_old) < 0.001:
+                        #logging.getLogger("movePerf").log(logging.DEBUG, f"Converged because of no significant error change ({abs(position_error_norm - position_error_norm_old)})")
+                        break
+
+                    # If error increased, use previous configuration and break
+                    if (position_error_norm_old < position_error_norm) and (orientation_error_old < orientation_error) :
+                        #logging.getLogger("movePerf").log(logging.DEBUG, f"Converged because of increasing error ({position_error_norm:.4f}). Using previous configuration")
+                        self._configuration.update(configuration_q_old)
+                        break
+
+                if position_error_norm < PINK_POS_TOLERANCE and orientation_error < PINK_ORIENTATION_TOLERACNE: 
+                    logger.info(f"[Pink IK] Converged at iteration {iteration + 1}, error={position_error_norm:.4f}m")
+                    break
 
                 # Compute velocity
                 velocity = pink.solve_ik(self._configuration, self._tasks, dt, solver=self._solver, safety_break=False)
@@ -258,10 +272,10 @@ class PinkKinematics:
                     logger.info(f"[Pink IK] Velocity vector (all {len(velocity)} DOF): {velocity}")
                     logger.info(f"[Pink IK] Max velocity: {max_velocity:.6f} rad/s")
 
-                    # Log what joints are being moved at the left arm DOF indices
-                    if hasattr(self, "_left_joint_dof_indices"):
-                        logger.info(f"[Pink IK] Left arm DOF indices: {self._left_joint_dof_indices}")
-                        for i, dof_idx in enumerate(self._left_joint_dof_indices):
+                    # Log what joints are being moved at the given arm DOF indices
+                    if hasattr(self, "_joint_dof_indices"):
+                        logger.info(f"[Pink IK] Arm DOF indices: {self._joint_dof_indices}")
+                        for i, dof_idx in enumerate(self._joint_dof_indices):
                             if dof_idx < len(velocity):
                                 vel = velocity[dof_idx]
                                 joint_name = self.joint_names[i]
@@ -277,9 +291,9 @@ class PinkKinematics:
                         f"[Pink IK] This suggests wrong DOF indices or task conflicts. Full velocity: {velocity}"
                     )
 
-                elapsed_iter = time.perf_counter() - start_time_iter
                 configuration_q_old = self._configuration.q.copy() # todo here and use the old config? maybe copy it before the intergrate_inplace??
                 position_error_norm_old = position_error_norm
+                orientation_error_old = orientation_error
 
                 # Integrate velocity
                 self._configuration.integrate_inplace(velocity, dt)
@@ -293,9 +307,9 @@ class PinkKinematics:
             # Get joint angles and apply best-effort clamping
             full_joint_angles = self._configuration.q.copy()
 
-            # Extract only left arm joint angles
-            if hasattr(self, "_left_joint_dof_indices") and len(self._left_joint_dof_indices) > 0:
-                joint_angles = np.array([full_joint_angles[i] for i in self._left_joint_dof_indices])
+            # Extract only one side arm joint angles
+            if hasattr(self, "_joint_dof_indices") and len(self._joint_dof_indices) > 0:
+                joint_angles = np.array([full_joint_angles[i] for i in self._joint_dof_indices])
             else:
                 joint_angles = full_joint_angles
 
@@ -333,9 +347,9 @@ class PinkKinematics:
         try:
             # Map 7-DOF joint angles to full configuration (18 DOF)
             full_q = self._configuration.q.copy()
-            if hasattr(self, "_left_joint_dof_indices") and len(self._left_joint_dof_indices) >= len(joint_angles):
-                logger.debug(f"[Pink FK] Mapping {len(joint_angles)} DOF to indices {self._left_joint_dof_indices}")
-                for i, idx in enumerate(self._left_joint_dof_indices):
+            if hasattr(self, "_joint_dof_indices") and len(self._joint_dof_indices) >= len(joint_angles):
+                logger.debug(f"[Pink FK] Mapping {len(joint_angles)} DOF to indices {self._joint_dof_indices}")
+                for i, idx in enumerate(self._joint_dof_indices):
                     if i < len(joint_angles):
                         full_q[idx] = joint_angles[i]
                 logger.debug(f"[Pink FK] Full config after mapping: {full_q}")
@@ -399,6 +413,7 @@ class OpenArmPinkRobot(RobotWrapper):
     def __init__(
         self,
         host: str,
+        laterality: Laterality,
         endeff_subscribe_port: int,
         reset_subscribe_port: int,
         home_subscribe_port: int,
@@ -408,7 +423,7 @@ class OpenArmPinkRobot(RobotWrapper):
         **kwargs,
     ):
         logger.info(
-            f"Initializing OpenArmPinkRobot with host={host}, endeff_publish_port={endeff_publish_port}, state_publish_port={state_publish_port}"
+            f"Initializing OpenArmPinkRobot with host={host}, laterality={laterality}, endeff_publish_port={endeff_publish_port}, state_publish_port={state_publish_port}"
         )
         if not endeff_publish_port:
             raise ValueError("OpenArmPinkRobot requires an 'endeff_publish_port'")
@@ -416,10 +431,21 @@ class OpenArmPinkRobot(RobotWrapper):
             raise ValueError("OpenArmPinkRobot requires a 'state_publish_port'")
 
         urdf_path = "/home/ubuntu/workshop-robotics/src/external_dependencies/openarm_description/urdf/robot/v10.urdf"
-        self._kinematics = PinkKinematics(ik_link_name="openarm_left_hand_tcp", urdf_path=urdf_path)
+
+        self._laterality = laterality
+        if laterality == Laterality.LEFT:
+            ik_link_name="openarm_left_hand_tcp"
+            command_topic_name = "/openarm_left_arm_forward_position_controller/commands"
+            joint_names = robots.OPENARM_LEFT_JOINT_NAMES
+        else: # if laterality == Laterality.RIGHT:
+            ik_link_name="openarm_right_hand_tcp"
+            command_topic_name = "/openarm_right_arm_forward_position_controller/commands"
+            joint_names = robots.OPENARM_RIGHT_JOINT_NAMES
+
+        self._kinematics = PinkKinematics(joint_names=joint_names, ik_link_name=ik_link_name, urdf_path=urdf_path)
         logger.info("PinkKinematics created successfully")
 
-        self._controller = DexArmControl()
+        self._controller = DexArmControl(command_topic_name=command_topic_name, joint_names=joint_names)
 
         self._data_frequency = robots.VR_FREQ
         self._num_joints = len(robots.OPENARM_LEFT_JOINT_NAMES)
@@ -490,11 +516,11 @@ class OpenArmPinkRobot(RobotWrapper):
             self._handshake_coordinator.start_server(
                 subscriber_id=self._handshake_server_id,
                 bind_host="*",
-                port=robots.TELEOP_HANDSHAKE_PORT + 10,
+                port=robots.TELEOP_HANDSHAKE_PORT + (10 if self._laterality == Laterality.LEFT else 9),  # Unique ports
             )
             logger.info(f"Handshake server started for {self.name}")
         except Exception as e:
-            logger.error(f"Failed to start handshake server on port {robots.TELEOP_HANDSHAKE_PORT + 10}: {e}")
+            logger.error(f"Failed to start handshake server on port {robots.TELEOP_HANDSHAKE_PORT + (10 if self._laterality == Laterality.LEFT else 9)}: {e}")
             logger.info("Attempting to continue without handshake server...")
             # Set a flag to indicate handshake is not available
             self._handshake_available = False
@@ -516,7 +542,10 @@ class OpenArmPinkRobot(RobotWrapper):
 
     @property
     def name(self):
-        return robots.ROBOT_IDENTIFIER_LEFT_OPENARM
+        if self._laterality == Laterality.LEFT:
+            return robots.ROBOT_IDENTIFIER_LEFT_OPENARM
+        else: #if self._laterality == Laterality.RIGHT:
+            return robots.ROBOT_IDENTIFIER_RIGHT_OPENARM
 
     @property
     def recorder_functions(self):

@@ -8,7 +8,7 @@ from .xarm7_operator import XArmOperator
 
 
 # Combined: axis swap with Z inversion correction
-H_R_V_LEFT =  np.array(
+H_R_V_RIGHT =  np.array(
     [
         [0.0, -1.0, 0.0, 0.0],
         [0.0, 0.0, 1.0, 0.0],
@@ -17,7 +17,7 @@ H_R_V_LEFT =  np.array(
     ]
 )
 
-H_T_V_LEFT = np.array(
+H_T_V_RIGHT = np.array(
     [
         [1.0, 0.0, 0.0, 0.0],
         [0.0, 1.0, 0.0, 0.0],
@@ -28,7 +28,7 @@ H_T_V_LEFT = np.array(
 
 # Conversion into robot coordinate system
 # Translation: Flip z values and rotate around z axis (-90deg)
-TRANSLATION_TO_ROBOT_LEFT = np.array([
+TRANSLATION_TO_ROBOT_RIGHT = np.array([
     [1,  0,  0,  0],
     [0,  1,  0,  0],
     [0,  0,  1,  0],
@@ -36,7 +36,7 @@ TRANSLATION_TO_ROBOT_LEFT = np.array([
 ])
 
 
-class OpenArmLeftOperator(XArmOperator):
+class OpenArmRightOperator(XArmOperator):
     def __init__(
         self,
         host: str,
@@ -52,7 +52,7 @@ class OpenArmLeftOperator(XArmOperator):
         logging_config: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(
-            operator_name="openarm_left_operator",
+            operator_name="openarm_right_operator",
             host=host,
             transformed_keypoints_port=transformed_keypoints_port,
             stream_configs=stream_configs,
@@ -60,12 +60,12 @@ class OpenArmLeftOperator(XArmOperator):
             endeff_publish_port=endeff_publish_port,
             endeff_subscribe_port=endeff_subscribe_port,
             moving_average_limit=moving_average_limit,
-            h_r_v=H_R_V_LEFT,
-            h_t_v=H_T_V_LEFT,
-            final_translation=TRANSLATION_TO_ROBOT_LEFT,
+            h_r_v=H_R_V_RIGHT,
+            h_t_v=H_T_V_RIGHT,
+            final_translation=TRANSLATION_TO_ROBOT_RIGHT,
             use_filter=use_filter,
             arm_resolution_port=arm_resolution_port,
             teleoperation_state_port=teleoperation_state_port,
             logging_config=logging_config,
-            hand_side=robots.LEFT,
+            hand_side=robots.RIGHT,
         )

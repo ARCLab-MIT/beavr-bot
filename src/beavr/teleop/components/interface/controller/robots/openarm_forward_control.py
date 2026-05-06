@@ -21,11 +21,11 @@ logger = logging.getLogger(__name__)
 class OpenArmForwardController:
     def __init__(
         self,
-        command_topic_name: str = "/openarm_left_arm_forward_position_controller/commands",
-        joint_names: Optional[list] = None,
+        joint_names: list,
+        command_topic_name: str = "",
         max_delta: float = 0.2,
     ):
-        self.joint_names = joint_names or robots.OPENARM_LEFT_JOINT_NAMES
+        self.joint_names = joint_names
         self.num_joints = len(self.joint_names)
         self.command_topic_name = command_topic_name
         self.max_delta = max_delta

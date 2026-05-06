@@ -5,6 +5,7 @@ from typing import Optional
 
 import rclpy
 from control_msgs.action import GripperCommand as GripperCommandAction
+from control_msgs.msg import GripperCommand as GripperCommandMsg
 from rclpy.action import ActionClient
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
@@ -24,7 +25,7 @@ class OpenArmGripperController:
 
     def __init__(
         self,
-        gripper_action_name: str = "/openarm_left_gripper_controller/gripper_cmd",
+        gripper_action_name: str = "",
         max_width: float = None,
         min_width: float = None,
         default_speed: float = None,
@@ -41,6 +42,12 @@ class OpenArmGripperController:
             gripper_action_name,
             callback_group=ReentrantCallbackGroup(),
         )
+
+        # Derive topic name: /openarm_X_gripper_controller/gripper_command                                                                                                                                                                                    
+        gripper_topic_name = gripper_action_name.replace("/gripper_cmd", "/gripper_command")                                                                                                                                                                     
+        self._command_publisher = self._node.create_publisher(                                                                                                                                                                                                   
+            GripperCommandMsg, gripper_topic_name, 10                                                                                                                                                                                                            
+        )   
 
         logger.info(f"Waiting for gripper action server: {gripper_action_name}")
         if not self._action_client.wait_for_server(timeout_sec=5.0):
@@ -96,6 +103,12 @@ class OpenArmGripperController:
 
         logger.info(f"Sending gripper command: width={clamped_width:.3f}m")
 
+        # Publish command as topic for rosbag recording                                                                                                                                                                                                        
+        topic_msg = GripperCommandMsg()                                                                                                                                                                                                                          
+        topic_msg.position = clamped_width                                                                                                                                                                                                                       
+        topic_msg.max_effort = goal_msg.command.max_effort                                                                                                                                                                                                       
+        self._command_publisher.publish(topic_msg)        
+
         send_goal_future = self._action_client.send_goal_async(goal_msg)
 
         timeout_sec = duration + 1.0
@@ -127,6 +140,8 @@ class OpenArmGripperController:
 
     def cleanup(self):
         logger.info("Cleaning up gripper controller...")
+        if hasattr(self, "_command_publisher"):                                                                                                                                                                                                                  
+            self._command_publisher.destroy()      
         if hasattr(self, "_action_client"):
             self._action_client.destroy()
         if hasattr(self, "_executor"):
@@ -142,6 +157,7 @@ class OpenArmGripperRobot(RobotWrapper):
     def __init__(
         self,
         host: str,
+        gripper_action_name: str,
         gripper_subscribe_port: int,
         **kwargs,
     ):
@@ -149,7 +165,7 @@ class OpenArmGripperRobot(RobotWrapper):
             f"Initializing OpenArmGripperRobot with host={host}, gripper_subscribe_port={gripper_subscribe_port}"
         )
 
-        self._controller = OpenArmGripperController()
+        self._controller = OpenArmGripperController(gripper_action_name=gripper_action_name)
 
         self._gripper_command_subscriber = ZMQSubscriber(
             host=host,
