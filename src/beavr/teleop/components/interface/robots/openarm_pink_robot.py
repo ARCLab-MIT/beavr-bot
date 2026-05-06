@@ -38,16 +38,16 @@ logger.setLevel(logging.ERROR)
 # Task costs for FrameTask (end-effector positioning)
 PINK_POSITION_COST = 1.0  # [cost] / [m] - aggressive positioning priority
 PINK_ORIENTATION_COST = 0.5  # [cost] / [rad] - low cost to enable orientation tracking
-PINK_LM_DAMPING = 0.01  # Levenberg-Marquardt damping - very low for faster convergence
+PINK_LM_DAMPING = 0.1  # Levenberg-Marquardt damping - very low for faster convergence
 
 # Posture task for joint regularization
-PINK_POSTURE_COST = 1e-1  # [cost] / [rad] - reduced to minimize interference with frame task
+PINK_POSTURE_COST = 0.1 # [cost] / [rad] - reduced to minimize interference with frame task
 
 # IK velocity integration time step
 PINK_IK_DT = 0.01  # seconds - smaller steps for stability
 
 # Iterative IK parameters
-PINK_MAX_ITERATIONS = 10  # max IK iterations per call
+PINK_MAX_ITERATIONS = 3  # max IK iterations per call
 PINK_POS_TOLERANCE = 0.01  # position tolerance in meters
 
 # Best-effort joint limits (radians)
