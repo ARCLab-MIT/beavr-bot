@@ -11,8 +11,8 @@ from .xarm7_operator import XArmOperator
 H_R_V_LEFT =  np.array(
     [
         [0.0, -1.0, 0.0, 0.0],
-        [1.0, 0.0, 0.0, 0.0],
         [0.0, 0.0, 1.0, 0.0],
+        [-1.0, 0.0, 0.0, 0.0],
         [0.0, 0.0, 0.0, 1.0],
     ]
 )
@@ -29,10 +29,10 @@ H_T_V_LEFT = np.array(
 # Conversion into robot coordinate system
 # Translation: Flip z values and rotate around z axis (-90deg)
 TRANSLATION_TO_ROBOT_LEFT = np.array([
-    [ 0.0,  1.0,  0.0, -0.15349774],
-    [-1.0,  0.0,  0.0,  0.15349774],
-    [ 0.0,  0.0, -1.0,  0.16379910],
-    [ 0.0,  0.0,  0.0,  1.0],
+    [0,  1,  0,  0.242601],
+    [0,  0, -1,  0.631499],
+    [1,  0,  0,  0.0819  ],
+    [0,  0,  0,  1       ]
 ])
 
 

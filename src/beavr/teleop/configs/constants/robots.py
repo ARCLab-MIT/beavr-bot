@@ -117,7 +117,7 @@ OPENARM_RIGHT_JOINT_NAMES = [
     "openarm_right_joint6",
     "openarm_right_joint7",
 ]
-OPENARM_HOME_JS = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+OPENARM_HOME_JS = [0.0, 0.0, 0.0, np.pi / 2, 0.0, 0.0, 0.0]
 OPENARM_TRAJECTORY_DURATION_SEC = 0.1
 OPENARM_NUM_JOINTS = 7
 
