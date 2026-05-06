@@ -49,6 +49,7 @@ PINK_IK_DT = 0.01  # seconds - smaller steps for stability
 # Iterative IK parameters
 PINK_MAX_ITERATIONS = 3  # max IK iterations per call
 PINK_POS_TOLERANCE = 0.01  # position tolerance in meters
+PINK_ORIENTATION_TOLERACNE = 0.0174533 # orientation tolerance (1 degree)
 
 # Best-effort joint limits (radians)
 PINK_JOINT_LIMIT_RANGE = np.pi  # +/- π for clamping
@@ -258,7 +259,7 @@ class PinkKinematics:
                         self._configuration.update(configuration_q_old)
                         break
 
-                if position_error_norm < PINK_POS_TOLERANCE: 
+                if position_error_norm < PINK_POS_TOLERANCE and orientation_error < PINK_ORIENTATION_TOLERACNE: 
                     logger.info(f"[Pink IK] Converged at iteration {iteration + 1}, error={position_error_norm:.4f}m")
                     break
 
