@@ -2,7 +2,7 @@ import logging
 import threading
 import time
 from collections import deque
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import numpy as np
 import pink
@@ -74,8 +74,23 @@ PINK_POSITION_COST = 1.0  # [cost] / [m] - aggressive positioning priority
 PINK_ORIENTATION_COST = 0.5  # [cost] / [rad] - low cost to enable orientation tracking
 PINK_LM_DAMPING = 0.1  # Levenberg-Marquardt damping - very low for faster convergence
 
-# Posture task for joint regularization
-PINK_POSTURE_COST = 0.1  # [cost] / [rad] - reduced to minimize interference with frame task
+# Posture task for joint regularization. Two cost levels: a near-zero default
+# leaves most joints free (so the FrameTask fully owns them), while a stronger
+# cost on the redundant DoF (joint3) biases the IK nullspace toward an
+# "elbow-out" reference posture. Both costs stay well below PINK_POSITION_COST
+# so end-effector tracking remains the dominant objective.
+PINK_POSTURE_COST_DEFAULT = 1e-3  # [cost] / [rad] - effectively frees non-biased joints
+PINK_POSTURE_COST_ELBOW = 0.4  # [cost] / [rad] - nullspace bias strength on joint3
+
+# Target swivel angle for joint3 (shoulder/upper-arm roll) that pushes the
+# elbow laterally outward. ~0.6 rad (~34 deg), well within the URDF limit
+# (joint3 is bounded to +/- pi/2 in joint_limits.yaml). The sign depends on
+# the left/right axis convention encoded in the URDF (`reflect` parameter in
+# openarm_arm.xacro). If an arm's elbow ends up pointing *inward* in practice,
+# flip the corresponding sign below.
+PINK_ELBOW_OUT_ANGLE_RAD = 0.6
+PINK_ELBOW_OUT_SIGN_LEFT = +1.0
+PINK_ELBOW_OUT_SIGN_RIGHT = -1.0
 
 # IK velocity integration time step
 PINK_IK_DT = 0.01  # seconds - smaller steps for stability
@@ -135,21 +150,24 @@ class PinkKinematics:
             q0 = pin.neutral(model)
             self._configuration = pink.Configuration(self._robot_model, self._robot_data, q0)
 
-            # Build correct joint mapping: controller joint -> Pink model DOF index (idx_q)
-            # Map each joint from joint_names to its Pinocchio configuration index (idx_q)
+            # Build correct joint mapping for this side's arm joints:
+            #   * idx_q: index in the configuration vector q (used to read/write angles)
+            #   * idx_v: index in the tangent / velocity vector (used for per-joint
+            #            posture-cost weighting because PostureTask jacobian is in nv).
             joint_dof_indices = []
+            joint_v_indices = []
             for joint_name in self.joint_names:
                 try:
-                    # Get joint ID first, then look up joint object to find idx_q
                     joint_id = self._robot_model.getJointId(joint_name)
                     joint = self._robot_model.joints[joint_id]
-                    idx_q = joint.idx_q
-                    joint_dof_indices.append(idx_q)
+                    joint_dof_indices.append(joint.idx_q)
+                    joint_v_indices.append(joint.idx_v)
                 except Exception as e:
                     logger.error(f"[PinkKinematics]   ERROR: Failed to find Pink DOF index for '{joint_name}': {e}")
                     raise
 
             self._joint_dof_indices = joint_dof_indices
+            self._joint_v_indices = joint_v_indices
 
             if len(joint_dof_indices) != len(self.joint_names):
                 logger.error(
@@ -187,17 +205,24 @@ class PinkKinematics:
                 lm_damping=PINK_LM_DAMPING,
             )
 
-            # Enable posture task for joint regularization
-            self._posture_task = PostureTask(
-                PINK_POSTURE_COST,
-            )
+            # Posture task with per-joint cost weighting: drives only joint3
+            # (the redundant DoF / elbow swivel) toward an "elbow-out" target,
+            # while leaving every other joint nearly free so the FrameTask
+            # remains dominant. This realises a soft nullspace bias.
+            self._elbow_out_sign = self._detect_elbow_out_sign()
+            posture_cost, q_ref = self._build_elbow_out_posture(self._elbow_out_sign)
+            self._posture_task = PostureTask(cost=posture_cost)
+            self._posture_task.set_target(q_ref)
+
             self._damping_task = DampingTask(
                 cost=1e-3,  # [cost] / [rad/s]
             )
             self._tasks = [self._end_effector_task, self._posture_task, self._damping_task]
 
-            for task in self._tasks[:2]:
-                task.set_target_from_configuration(self._configuration)
+            # Anchor the FrameTask at the current pose so we don't generate a
+            # transient at startup. The PostureTask target was already set
+            # above to the elbow-out reference and must NOT be overwritten.
+            self._end_effector_task.set_target_from_configuration(self._configuration)
 
             self._solver = qpsolvers.available_solvers[0]
             if "daqp" in qpsolvers.available_solvers:
@@ -245,6 +270,82 @@ class PinkKinematics:
                     )
             except Exception as e:
                 logger.warning(f"[Startup] Could not read URDF limits for '{joint_name}': {e}")
+
+    def _detect_elbow_out_sign(self) -> Optional[float]:
+        """Return +1/-1 depending on which arm side this kinematics serves.
+
+        The sign defines the joint3 (shoulder/upper-arm roll) direction that
+        swings the elbow laterally outward. The mapping is empirical and
+        depends on the URDF axis convention for each side; if elbows go
+        inward instead, flip ``PINK_ELBOW_OUT_SIGN_LEFT`` / ``..._RIGHT``.
+        """
+        blob = " ".join(self.joint_names).lower()
+        if "left" in blob:
+            return PINK_ELBOW_OUT_SIGN_LEFT
+        if "right" in blob:
+            return PINK_ELBOW_OUT_SIGN_RIGHT
+        logger.info(
+            "[Startup] Could not infer arm side from joint names; elbow-out "
+            "nullspace bias disabled (joint3 will sit at neutral)."
+        )
+        return None
+
+    def _build_elbow_out_posture(self, elbow_out_sign: Optional[float]) -> Tuple[np.ndarray, np.ndarray]:
+        """Build the (cost_vector, target_q) pair for the elbow-out PostureTask.
+
+        Strategy:
+          * cost_vector has length nv; default value is PINK_POSTURE_COST_DEFAULT
+            (near zero, so most joints stay free for the FrameTask).
+          * Only this side's joint3 receives PINK_POSTURE_COST_ELBOW.
+          * target_q starts at the model's neutral configuration; only this
+            side's joint3 is set to PINK_ELBOW_OUT_ANGLE_RAD * sign. All other
+            entries effectively don't matter because their cost is near zero.
+        """
+        nv = self._robot_model.nv
+        cost_vector = np.full(nv, PINK_POSTURE_COST_DEFAULT, dtype=float)
+        q_ref = pin.neutral(self._robot_model).copy()
+
+        if elbow_out_sign is None or len(self._joint_dof_indices) < 3:
+            return cost_vector, q_ref
+
+        joint3_idx_q = self._joint_dof_indices[2]
+        joint3_idx_v = self._joint_v_indices[2]
+        target_angle = float(elbow_out_sign) * PINK_ELBOW_OUT_ANGLE_RAD
+
+        target_angle = self._clip_to_urdf_limits(joint3_idx_q, target_angle)
+
+        q_ref[joint3_idx_q] = target_angle
+        cost_vector[joint3_idx_v] = PINK_POSTURE_COST_ELBOW
+
+        logger.info(
+            f"[Startup] Elbow-out posture bias active: "
+            f"joint3='{self.joint_names[2]}' target={target_angle:+.4f} rad, "
+            f"cost={PINK_POSTURE_COST_ELBOW} (default cost on other DoFs={PINK_POSTURE_COST_DEFAULT})"
+        )
+        return cost_vector, q_ref
+
+    def _clip_to_urdf_limits(self, idx_q: int, value: float) -> float:
+        """Clamp a posture-target angle into the URDF's [lower, upper] range.
+
+        Prevents the case where the chosen elbow-out target would itself lie
+        outside the joint limits and cause the QP to fight its own
+        ConfigurationLimit constraint.
+        """
+        try:
+            lo = float(self._robot_model.lowerPositionLimit[idx_q])
+            hi = float(self._robot_model.upperPositionLimit[idx_q])
+        except Exception:
+            return value
+        if not (np.isfinite(lo) and np.isfinite(hi)) or hi <= lo:
+            return value
+        margin = 0.05  # rad - keep a small distance from the limit
+        clipped = float(np.clip(value, lo + margin, hi - margin))
+        if abs(clipped - value) > 1e-6:
+            logger.warning(
+                f"[Startup] Elbow-out target {value:+.3f} rad clipped to "
+                f"{clipped:+.3f} rad to respect URDF limits [{lo:+.3f}, {hi:+.3f}]"
+            )
+        return clipped
 
     def compute_ik(self, position: np.ndarray, orientation_quat: np.ndarray, seed_state: Optional[np.ndarray] = None) -> np.ndarray:
         """
