@@ -85,7 +85,9 @@ PINK_MAX_ITERATIONS = 3  # max IK iterations per call
 PINK_POS_TOLERANCE = 0.01  # position tolerance in meters
 PINK_ORIENTATION_TOLERANCE = 0.0174533  # orientation tolerance (1 degree)
 
-# Best-effort joint limits (radians)
+# Best-effort joint limits (radians) - only used as a final clamp on the
+# returned arm joint vector. Pink itself enforces the actual URDF limits via
+# its ConfigurationLimit constraint inside the QP.
 PINK_JOINT_LIMIT_RANGE = np.pi  # +/- π for clamping
 
 
@@ -120,11 +122,13 @@ class PinkKinematics:
             self._robot_model = model
             self._robot_data = model.createData()
 
-            # Disable joint limit checking by setting limits to very large values
-            if hasattr(self._robot_model, "lowerPositionLimit"):
-                self._robot_model.lowerPositionLimit[:] = -np.inf
-            if hasattr(self._robot_model, "upperPositionLimit"):
-                self._robot_model.upperPositionLimit[:] = np.inf
+            # Trust the joint position/velocity limits coming from the URDF
+            # (rendered from openarm_description's joint_limits.yaml). Pink's
+            # ConfigurationLimit / VelocityLimit auto-detect bounded joints by
+            # checking model.{upper,lower}PositionLimit and model.velocityLimit
+            # against +/-1e20, so we must not overwrite them with +/-inf if we
+            # want the QP to actually enforce them.
+            self._log_urdf_joint_limits()
 
             # Create Configuration with the full robot model
             # pink will solve IK for all joints, but we'll extract only left arm joints later
@@ -212,6 +216,35 @@ class PinkKinematics:
         value = (np.trace(R_err) - 1) / 2
         value = np.clip(value, -1.0, 1.0)  # numerical safety
         return np.arccos(value)
+
+    def _log_urdf_joint_limits(self) -> None:
+        """Log the position/velocity limits Pinocchio extracted from the URDF.
+
+        Useful as a smoke test: if these come back as +/-inf, the URDF was
+        rendered without `<limit>` tags (e.g. xacro args missing) and Pink's
+        ConfigurationLimit will silently skip those joints.
+        """
+        model = self._robot_model
+        for joint_name in self.joint_names:
+            try:
+                joint = model.joints[model.getJointId(joint_name)]
+                idx_q = joint.idx_q
+                idx_v = joint.idx_v
+                lo = float(model.lowerPositionLimit[idx_q])
+                hi = float(model.upperPositionLimit[idx_q])
+                vmax = float(model.velocityLimit[idx_v])
+                bounded = np.isfinite(lo) and np.isfinite(hi) and (hi - lo) > 1e-6
+                logger.info(
+                    f"[Startup] URDF limit {joint_name}: q in [{lo:+.4f}, {hi:+.4f}] rad, "
+                    f"|qdot|<= {vmax:.3f} rad/s, bounded={bounded}"
+                )
+                if not bounded:
+                    logger.warning(
+                        f"[Startup] Joint '{joint_name}' has no usable position limits in URDF; "
+                        f"Pink's ConfigurationLimit will not constrain it."
+                    )
+            except Exception as e:
+                logger.warning(f"[Startup] Could not read URDF limits for '{joint_name}': {e}")
 
     def compute_ik(self, position: np.ndarray, orientation_quat: np.ndarray, seed_state: Optional[np.ndarray] = None) -> np.ndarray:
         """
