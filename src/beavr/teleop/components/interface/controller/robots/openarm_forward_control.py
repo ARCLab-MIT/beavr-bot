@@ -148,7 +148,7 @@ class OpenArmForwardController:
             }
         return result
 
-    def move_arm_joint(self, joint_angles: np.ndarray, duration: Optional[float] = None) -> bool:
+    def move_arm_joints(self, joint_angles: np.ndarray, duration: Optional[float] = None) -> bool:
         """Publish joint position commands to topic with max_delta limit per step"""
 
         if len(joint_angles) != self.num_joints:
@@ -181,7 +181,7 @@ class OpenArmForwardController:
 
     def home_arm(self) -> bool:
         logger.info("Homing arm to zero position")
-        return self.move_arm_joint(np.array(robots.OPENARM_HOME_JS))
+        return self.move_arm_joints(np.array(robots.OPENARM_HOME_JS))
 
     def reset_arm(self) -> bool:
         return self.home_arm()
@@ -216,10 +216,10 @@ class DexArmControl:
     def get_arm_states(self):
         return self._controller.get_arm_states()
 
-    def move_arm_joint(self, joint_angles, duration=None):
-        return self._controller.move_arm_joint(joint_angles, duration)
+    def move_arm_joints(self, joint_angles: np.ndarray, duration: Optional[float] = None) -> bool:
+        return self._controller.move_arm_joints(joint_angles, duration)
 
-    def home_arm(self):
+    def home_arm(self) -> bool:
         return self._controller.home_arm()
 
     def reset_arm(self):

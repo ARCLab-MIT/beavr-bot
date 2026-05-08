@@ -83,7 +83,7 @@ PINK_IK_DT = 0.01  # seconds - smaller steps for stability
 # Iterative IK parameters
 PINK_MAX_ITERATIONS = 3  # max IK iterations per call
 PINK_POS_TOLERANCE = 0.01  # position tolerance in meters
-PINK_ORIENTATION_TOLERACNE = 0.0174533  # orientation tolerance (1 degree)
+PINK_ORIENTATION_TOLERANCE = 0.0174533  # orientation tolerance (1 degree)
 
 # Best-effort joint limits (radians)
 PINK_JOINT_LIMIT_RANGE = np.pi  # +/- π for clamping
@@ -213,17 +213,17 @@ class PinkKinematics:
         value = np.clip(value, -1.0, 1.0)  # numerical safety
         return np.arccos(value)
 
-    def compute_ik(self, position, orientation_quat, seed_state=None) -> Optional[List[float]]:
+    def compute_ik(self, position: np.ndarray, orientation_quat: np.ndarray, seed_state: Optional[np.ndarray] = None) -> np.ndarray:
         """
         Compute IK solution for given pose.
 
         Args:
             position: 3D position [x, y, z]
             orientation_quat: Quaternion [x, y, z, w]
-            seed_state: Optional seed joint configuration
+            seed_state: Optional numpy array of 7 joint angles
 
         Returns:
-            List of 7 joint angles, or best-effort solution on failure
+            numpy array of 7 joint angles, or best-effort solution (current joint angles) on failure
         """
 
         start_time = time.perf_counter()
@@ -374,15 +374,15 @@ class PinkKinematics:
                 f"[Pink IK] SUCCESS: computed {len(joint_angles)} joint angles in {elapsed * 1000:.2f}ms: {joint_angles}"
             )
 
-            return joint_angles.tolist()
+            return joint_angles
 
         except Exception as e:
             logger.error(f"[Pink IK] FAILED: {e}", exc_info=True)
 
             # Return best-effort current joint positions
-            best_effort = self._configuration.q.copy()
+            best_effort = np.array(self._configuration.q.copy())
             logger.warning(f"[Pink IK] Returning best-effort solution: {best_effort}")
-            return best_effort.tolist()
+            return best_effort
 
     def compute_fk(self, joint_angles) -> Optional[np.ndarray]:
         """
@@ -511,7 +511,7 @@ class OpenArmPinkRobot(RobotWrapper):
         self._latest_commanded_cartesian_position = None
         self._latest_commanded_cartesian_timestamp = 0.0
 
-        self._latest_joint_angles = None
+        self._latest_joint_angles: Optional[np.ndarray] = None
         self._cartesian_tolerance = 0.001
 
         self._joint_angles_lock = threading.Lock()
@@ -552,11 +552,11 @@ class OpenArmPinkRobot(RobotWrapper):
             return False
         return np.linalg.norm(np.array(pos1) - np.array(pos2)) < self._cartesian_tolerance
 
-    def _send_joint_trajectory(self, joint_angles, duration=None):
-        """Delegate trajectory publishing to OpenArmController"""
-        success = self._controller.move_arm_joint(joint_angles, duration)
+    def _send_joint_positions(self, joint_angles: np.ndarray, duration: Optional[float] = None) -> bool:
+        """Delegate joint positions publishing to OpenArmController"""
+        success = self._controller.move_arm_joints(joint_angles, duration)
         if not success:
-            logger.error("Failed to send joint trajectory")
+            logger.error("Failed to send joint positions")
         return success
 
     @property
@@ -618,16 +618,16 @@ class OpenArmPinkRobot(RobotWrapper):
         return self._kinematics.compute_fk(joint_positions)
 
     def reset(self):
-        return self._send_joint_trajectory(np.array(robots.OPENARM_HOME_JS))
+        return self._send_joint_positions(np.array(robots.OPENARM_HOME_JS))
 
     def get_teleop_state(self):
         return self._arm_teleop_state_subscriber.get_arm_teleop_state()
 
-    def home(self):
-        return self._send_joint_trajectory(np.array(robots.OPENARM_HOME_JS))
+    def home(self) -> bool:
+        return self._controller.home_arm()
 
     def move(self, input_angles):
-        self._send_joint_trajectory(input_angles)
+        self._send_joint_positions(input_angles)
 
     def move_coords(self, input_coords, duration=None):
         """Compute IK and send joint trajectory (synchronous)"""
@@ -641,7 +641,7 @@ class OpenArmPinkRobot(RobotWrapper):
             logger.warning("IK returned None, using last valid or home")
             return
 
-        self._send_joint_trajectory(joint_angles, duration)
+        self._send_joint_positions(joint_angles, duration)
 
     def arm_control(self, cartesian_coords):
         """Compute IK and send joint trajectory (synchronous)"""
@@ -655,7 +655,7 @@ class OpenArmPinkRobot(RobotWrapper):
             logger.warning("IK returned None, using last valid angles or home")
             return
 
-        self._send_joint_trajectory(joint_angles)
+        self._send_joint_positions(joint_angles)
 
     def get_pose(self):
         return self.get_cartesian_position()
@@ -830,7 +830,7 @@ class OpenArmPinkRobot(RobotWrapper):
 
             if self._latest_joint_angles is not None:
                 logger.debug(f"[ROBOT] Sending joint angles to controller: {self._latest_joint_angles}")
-                self._send_joint_trajectory(self._latest_joint_angles)
+                self._send_joint_positions(self._latest_joint_angles)
             else:
                 logger.debug("[ROBOT] No joint angles available to send")
 

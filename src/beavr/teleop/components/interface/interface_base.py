@@ -38,7 +38,7 @@ class RobotWrapper(ABC):
         pass
 
     @abstractmethod
-    def home(self):
+    def home(self) -> bool:
         pass
 
     @abstractmethod
